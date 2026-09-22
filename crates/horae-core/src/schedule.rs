@@ -207,54 +207,79 @@ fn rrule_occurrences(rrule: &str, anchor_ms: i64, limit: usize) -> Result<Vec<i6
 
     let mut out = Vec::new();
     let mut cur = anchor;
-    let max_iter = (count as usize).min(limit);
+
+    let mut actual_limit = limit;
+    if freq == "YEARLY" {
+        actual_limit = limit.min(5);
+    } else if freq == "MONTHLY" {
+        actual_limit = limit.min(24);
+    } else if freq == "WEEKLY" {
+        actual_limit = limit.min(104);
+    }
+    let max_iter = (count as usize).min(actual_limit);
 
     if freq == "WEEKLY" && !byday.is_empty() {
         let mut occurrences_found = 0;
-        let mut current_day = cur;
+        let anchor_local = cur.with_timezone(&Local);
+        let mut local_date = anchor_local.date_naive();
+        let anchor_time = anchor_local.time();
 
         while occurrences_found < max_iter {
-            // 与 BYMONTHDAY 一致，用本地历日匹配星期（BYDAY 的星期属于本地时区）。
-            if byday.contains(&current_day.with_timezone(&Local).weekday()) {
-                let ms = current_day.timestamp_millis();
-                if let Some(u) = until_ms {
-                    if ms > u {
-                        break;
+            if byday.contains(&local_date.weekday()) {
+                let local_dt = local_date.and_time(anchor_time);
+                if let Ok(ms) = crate::time::local_to_utc_ms(local_dt) {
+                    if ms >= anchor_ms {
+                        if let Some(u) = until_ms {
+                            if ms > u {
+                                break;
+                            }
+                        }
+                        out.push(ms);
+                        occurrences_found += 1;
                     }
                 }
-                out.push(ms);
-                occurrences_found += 1;
             }
-            current_day += chrono::Duration::days(1);
-            if current_day.with_timezone(&Local).weekday() == chrono::Weekday::Mon && interval > 1 {
-                current_day += chrono::Duration::weeks(interval - 1);
+            local_date += chrono::Duration::days(1);
+            if local_date.weekday() == chrono::Weekday::Mon && interval > 1 {
+                local_date += chrono::Duration::weeks(interval - 1);
             }
         }
     } else if freq == "MONTHLY" && !bymonthday.is_empty() {
         let mut occurrences_found = 0;
-        let mut current_day = cur;
+        let anchor_local = cur.with_timezone(&Local);
+        let mut year = anchor_local.year();
+        let mut month = anchor_local.month();
+        let anchor_time = anchor_local.time();
 
         while occurrences_found < max_iter {
-            let local = current_day.with_timezone(&Local);
-            let last_day = days_in_month(local.year(), local.month()) as i32;
-            let day = local.day() as i32;
-            if bymonthday
-                .iter()
-                .any(|spec| month_day_matches(day, last_day, *spec))
-            {
-                let ms = current_day.timestamp_millis();
-                if let Some(u) = until_ms {
-                    if ms > u {
-                        break;
+            let last_day = days_in_month(year, month) as i32;
+            for day in 1..=last_day {
+                if bymonthday
+                    .iter()
+                    .any(|spec| month_day_matches(day, last_day, *spec))
+                {
+                    if let Some(nd) = NaiveDate::from_ymd_opt(year, month, day as u32) {
+                        let local_dt = nd.and_time(anchor_time);
+                        if let Ok(ms) = crate::time::local_to_utc_ms(local_dt) {
+                            if ms >= anchor_ms {
+                                if let Some(u) = until_ms {
+                                    if ms > u {
+                                        return Ok(out);
+                                    }
+                                }
+                                out.push(ms);
+                                occurrences_found += 1;
+                                if occurrences_found >= max_iter {
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
-                out.push(ms);
-                occurrences_found += 1;
             }
-            current_day += chrono::Duration::days(1);
-            if current_day.with_timezone(&Local).day() == 1 && interval > 1 {
-                current_day = add_months(current_day, interval - 1);
-            }
+            let total_months = (year as i64 * 12) + (month as i64 - 1) + interval;
+            year = (total_months / 12) as i32;
+            month = ((total_months % 12 + 12) % 12 + 1) as u32;
         }
     } else if freq == "YEARLY" && !bymonth.is_empty() {
         let mut occurrences_found = 0;

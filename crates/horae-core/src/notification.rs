@@ -59,6 +59,10 @@ impl NotificationEngine {
         // Bug3 修复：从持久化文件恢复状态，避免重启后重复通知。
         let saved: NotifyTuiState = JsonStateStore::new(state_file).load().unwrap_or_default();
         Self {
+            // Delay first background scan by 1 second so it is off the critical startup path.
+            #[cfg(not(test))]
+            last_tick_ms: crate::time::now_ms() - 9_000,
+            #[cfg(test)]
             last_tick_ms: 0,
             notified: saved.notified.into_iter().collect(),
             state_file,
