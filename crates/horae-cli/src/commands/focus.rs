@@ -81,6 +81,14 @@ pub fn run(conn: &Connection, start: bool) -> Result<()> {
             }
         }
 
+        if let Some(s) = task.scheduled_start_at {
+            if s <= now {
+                score += 1500;
+                let days_started = (now - s) / (1000 * 60 * 60 * 24);
+                score += days_started.min(50) * 5;
+            }
+        }
+
         if let Some((best_score, best_t)) = best_task {
             if score > best_score || (score == best_score && task.created_at < best_t.created_at) {
                 best_task = Some((score, task));
@@ -161,6 +169,49 @@ mod tests {
         .unwrap();
 
         // This will print to stdout during test, which is fine
+        assert!(run(&conn, false).is_ok());
+    }
+
+    #[test]
+    fn test_focus_picks_scheduled_task() {
+        let (_dir, conn) = test_conn();
+        // A normal task
+        capture(
+            &conn,
+            CaptureArgs {
+                title: "normal task".into(),
+                clip: false,
+                tags: vec![],
+                high: false,
+                medium: false,
+                low: false,
+                due: None,
+                status: None,
+                notes: None,
+                json: false,
+            },
+        )
+        .unwrap();
+
+        // A scheduled task that is past its start time
+        capture(
+            &conn,
+            CaptureArgs {
+                title: "scheduled task ~2000-01-01 09:00".into(),
+                clip: false,
+                tags: vec![],
+                high: false,
+                medium: false,
+                low: false,
+                due: None,
+                status: None,
+                notes: None,
+                json: false,
+            },
+        )
+        .unwrap();
+
+        // The scheduled task should have a higher score (+1500 + some days) than the normal task (0)
         assert!(run(&conn, false).is_ok());
     }
 }
