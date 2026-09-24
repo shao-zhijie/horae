@@ -8,6 +8,7 @@
 
 mod query;
 mod quotes;
+pub mod timeline;
 mod transition;
 
 pub use query::{
@@ -16,6 +17,7 @@ pub use query::{
     list_stale_waiting, resolve_id, ListFilter,
 };
 pub use quotes::{count_quotes, count_quotes_in_status, list_quotes, quote_task_ids, QUOTE_TAG};
+pub use timeline::{describe_event, TimelineEntry};
 pub use transition::{
     add_checklist_item, archive, create_capture, delete_checklist_item, ensure_ready_for_pomodoro,
     modify, move_checklist_item, purge, rename, rename_checklist_item, schedule, set_due,

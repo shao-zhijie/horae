@@ -1,20 +1,30 @@
 use crate::tui::app::{App, Mode};
-use crate::tui::icons::Icon;
+use crate::tui::icons::{Icon, IconStyle};
 use crate::tui::status_cn;
 use crate::tui::ui;
+use chrono::{Local, TimeZone, Utc};
 use horae_core::model::event;
+use horae_core::repo::tasks::describe_event;
 use horae_core::time;
 use ratatui::{
     style::{Modifier, Style},
     text::{Line, Span},
 };
 
+fn format_compact_time(ms: i64) -> String {
+    match Utc.timestamp_millis_opt(ms).single() {
+        Some(dt) => dt.with_timezone(&Local).format("%m-%d %H:%M").to_string(),
+        None => "-".to_string(),
+    }
+}
+
 impl<'a> App<'a> {
     /// 详情面板内容行。
-    pub(super) fn detail_lines(
+    pub(crate) fn detail_lines(
         &self,
         d: &crate::tui::app::DetailData,
         width: u16,
+        height: u16,
     ) -> Vec<Line<'static>> {
         let mut lines: Vec<Line> = vec![];
 
@@ -245,51 +255,193 @@ impl<'a> App<'a> {
         }
 
         lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            tr!(self.lang, "时间线", "Timeline"),
-            Style::default().add_modifier(Modifier::UNDERLINED),
-        )));
-        for e in d.events.iter().rev().take(6).rev() {
-            let event_cn = match e.event_type.as_str() {
-                "created" => tr!(self.lang, "创建", "created"),
-                "status_change" => tr!(self.lang, "流转", "changed"),
-                event::EV_COMPLETED => tr!(self.lang, "完成", "completed"),
-                event::EV_ARCHIVED => tr!(self.lang, "归档", "archived"),
-                event::EV_POMODORO => tr!(self.lang, "专注", "focus"),
-                event::EV_HABIT_COMPLETED => tr!(self.lang, "习惯", "habit"),
-                event::EV_RESTORED => tr!(self.lang, "恢复", "restored"),
-                _ => &e.event_type,
-            };
+        let git_icon = self.icon(Icon::Timeline);
+        let header_prefix = if git_icon.is_empty() {
+            "".to_string()
+        } else {
+            format!("{} ", git_icon)
+        };
+        lines.push(Line::from(vec![
+            Span::styled(header_prefix, Style::default().fg(self.theme.accent)),
+            Span::styled(
+                tr!(self.lang, "时间线 (Git Log)", "Timeline (Git Log)"),
+                Style::default()
+                    .fg(self.theme.fg)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]));
 
-            let from_cn = e
-                .from_status
-                .as_deref()
-                .unwrap_or("-")
-                .parse::<horae_core::model::task::Status>()
-                .map(|s| status_cn(self.lang, s))
-                .unwrap_or("-");
-            let to_cn = e
-                .to_status
-                .as_deref()
-                .unwrap_or("-")
-                .parse::<horae_core::model::task::Status>()
-                .map(|s| status_cn(self.lang, s))
-                .unwrap_or("-");
-
-            let action = if e.event_type == "status_change" {
-                format!("{} -> {}", from_cn, to_cn)
-            } else if e.event_type == event::EV_POMODORO {
-                "🍅 +1".to_string()
-            } else {
-                "".to_string()
-            };
-
-            lines.push(Line::from(format!(
-                "  {} {} {}",
-                time::format_local(Some(e.at)),
-                event_cn,
-                action
+        if d.events.is_empty() {
+            lines.push(Line::from(Span::styled(
+                tr!(self.lang, "  (暂无历史记录)", "  (no history recorded)"),
+                Style::default().fg(self.theme.text_dim),
             )));
+        } else {
+            let is_ascii = self.icon_style == IconStyle::Ascii;
+            let node_head = if is_ascii { "*" } else { "●" };
+            let node_other = if is_ascii { "o" } else { "○" };
+            let rail = if is_ascii { "|" } else { "│" };
+            let collapsed_rail = if is_ascii { ":" } else { "┊" };
+
+            // Available vertical space in detail pane
+            let used_so_far = lines.len();
+            let inner_height = (height.saturating_sub(2)) as usize;
+            let available = inner_height.saturating_sub(used_so_far);
+
+            // d.events is chronological: index 0 is root, last is HEAD.
+            let total = d.events.len();
+
+            // When total > 6 and space is limited: show newest 3, collapsed summary, and 1 root
+            let (display_groups, collapsed_count) = if total > 6 && available < total * 2 {
+                let newest = d.events.iter().rev().take(3).cloned().collect::<Vec<_>>();
+                let root = d.events.first().cloned().unwrap();
+                let collapsed = total - 4;
+                (vec![(newest, true), (vec![root], false)], collapsed)
+            } else {
+                let all_rev = d.events.iter().rev().cloned().collect::<Vec<_>>();
+                (vec![(all_rev, true)], 0)
+            };
+
+            let total_displayed = if collapsed_count > 0 { 4 } else { total };
+            let show_rail_lines = available > total_displayed * 2;
+
+            for (group_idx, (group_events, is_first_group)) in display_groups.iter().enumerate() {
+                for (item_idx, event) in group_events.iter().enumerate() {
+                    let is_head = *is_first_group && item_idx == 0;
+                    let is_root = (!is_first_group && item_idx == group_events.len() - 1)
+                        || (*is_first_group
+                            && collapsed_count == 0
+                            && item_idx == group_events.len() - 1);
+
+                    let entry = describe_event(event, self.lang);
+                    let time_str = format_compact_time(entry.at);
+
+                    let (node_glyph, node_color) = if is_head {
+                        let color = if entry.event_type == event::EV_COMPLETED
+                            || entry.event_type == event::EV_HABIT_COMPLETED
+                        {
+                            self.theme.text_success
+                        } else {
+                            self.theme.accent
+                        };
+                        (node_head, color)
+                    } else if entry.event_type == event::EV_COMPLETED
+                        || entry.event_type == event::EV_HABIT_COMPLETED
+                    {
+                        (node_other, self.theme.text_success)
+                    } else if entry.event_type == event::EV_POMODORO
+                        || entry.event_type == event::EV_POMODORO_STARTED
+                    {
+                        (node_other, self.theme.rrule_fg)
+                    } else {
+                        (node_other, self.theme.text_dim)
+                    };
+
+                    let (badge_color, badge_bold) = match entry.event_type.as_str() {
+                        event::EV_COMPLETED | event::EV_HABIT_COMPLETED => {
+                            (self.theme.text_success, true)
+                        }
+                        event::EV_POMODORO | event::EV_POMODORO_STARTED => {
+                            (self.theme.rrule_fg, true)
+                        }
+                        event::EV_POMODORO_ABORTED | event::EV_ARCHIVED => {
+                            (self.theme.text_urgent, false)
+                        }
+                        event::EV_STATUS_CHANGED | event::EV_SCHEDULED => {
+                            (self.theme.accent, false)
+                        }
+                        event::EV_CHECKLIST => (self.theme.hl_fg, false),
+                        _ => (self.theme.text_dim, false),
+                    };
+
+                    let mut badge_style = Style::default().fg(badge_color);
+                    if badge_bold {
+                        badge_style = badge_style.add_modifier(Modifier::BOLD);
+                    }
+
+                    let ref_badge = if is_head && is_root {
+                        Some((
+                            "(HEAD, root)",
+                            Style::default()
+                                .fg(self.theme.accent)
+                                .add_modifier(Modifier::BOLD),
+                        ))
+                    } else if is_head {
+                        Some((
+                            "(HEAD)",
+                            Style::default()
+                                .fg(self.theme.accent)
+                                .add_modifier(Modifier::BOLD),
+                        ))
+                    } else if is_root {
+                        Some(("(root)", Style::default().fg(self.theme.text_dim)))
+                    } else {
+                        None
+                    };
+
+                    let mut line_spans = vec![
+                        Span::styled(
+                            format!("  {} ", node_glyph),
+                            Style::default().fg(node_color),
+                        ),
+                        Span::styled(
+                            format!("{} ", time_str),
+                            Style::default().fg(self.theme.text_dim),
+                        ),
+                        Span::styled(format!("[{}] ", entry.badge), badge_style),
+                    ];
+
+                    if let Some((tag_str, tag_style)) = ref_badge {
+                        line_spans.push(Span::styled(format!("{} ", tag_str), tag_style));
+                    }
+
+                    line_spans.push(Span::styled(
+                        entry.description,
+                        Style::default().fg(self.theme.fg),
+                    ));
+
+                    lines.push(Line::from(line_spans));
+
+                    let is_last_item_overall =
+                        group_idx == display_groups.len() - 1 && item_idx == group_events.len() - 1;
+                    if show_rail_lines && !is_last_item_overall {
+                        lines.push(Line::from(Span::styled(
+                            format!("  {}", rail),
+                            Style::default().fg(self.theme.border_inactive),
+                        )));
+                    }
+                }
+
+                if group_idx == 0 && collapsed_count > 0 {
+                    if show_rail_lines {
+                        lines.push(Line::from(Span::styled(
+                            format!("  {}", rail),
+                            Style::default().fg(self.theme.border_inactive),
+                        )));
+                    }
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            format!("  {} ", collapsed_rail),
+                            Style::default().fg(self.theme.border_inactive),
+                        ),
+                        Span::styled(
+                            tr!(
+                                self.lang,
+                                "... (折叠 {} 项更早记录)",
+                                "... (collapsed {} earlier events)",
+                                collapsed_count
+                            ),
+                            Style::default().fg(self.theme.text_dim),
+                        ),
+                    ]));
+                    if show_rail_lines {
+                        lines.push(Line::from(Span::styled(
+                            format!("  {}", rail),
+                            Style::default().fg(self.theme.border_inactive),
+                        )));
+                    }
+                }
+            }
         }
 
         // 检查单管理模式（ChecklistFocus）的操作提示，吸引注意并告知按键。

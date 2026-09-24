@@ -21,7 +21,7 @@ impl<'a> App<'a> {
                         ) {
                             if let Ok(pomo) = horae_core::repo::pomodoro::get_state() {
                                 if pomo.task_id.as_deref() == Some(id) {
-                                    let _ = horae_core::pomo::stop();
+                                    let _ = horae_core::pomo::stop(Some(self.conn), false);
                                 }
                             }
                         }
@@ -87,7 +87,7 @@ impl<'a> App<'a> {
                     // 若当前番茄钟正聚焦于该任务，先停止它再删除。
                     if let Ok(pomo) = horae_core::repo::pomodoro::get_state() {
                         if pomo.task_id.as_deref() == Some(id.as_str()) {
-                            let _ = horae_core::pomo::stop();
+                            let _ = horae_core::pomo::stop(Some(self.conn), false);
                         }
                     }
                     if tasks::purge(self.conn, id).is_ok() {

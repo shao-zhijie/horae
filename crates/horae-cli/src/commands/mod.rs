@@ -166,7 +166,7 @@ fn run_inner(
                     anyhow::bail!("task_id required for start")
                 }
             }
-            "stop" => pomo::stop(),
+            "stop" => pomo::stop(Some(conn), false),
             "daemon" => pomo::daemon(),
             "waybar" => pomo::waybar(),
             _ => anyhow::bail!("unknown pomo action"),

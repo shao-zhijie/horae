@@ -4847,3 +4847,138 @@ fn pomodoro_smooth_bar_precision() {
     assert_eq!(filled, "█████");
     assert_eq!(empty, "░░░░░");
 }
+
+#[test]
+fn test_detail_git_timeline_rendering() {
+    horae_core::repo::state::set_test_override();
+    let mut conn = Connection::open(":memory:").unwrap();
+    migrate::run(&mut conn).unwrap();
+    let mut app = app_normal(&conn);
+
+    // Create a task
+    let task = horae_core::repo::tasks::create_capture(
+        &conn,
+        &horae_core::repo::tasks::CaptureInput {
+            title: "git timeline test".into(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    // Transition to Next then Done
+    horae_core::repo::tasks::transition(&conn, &task.id, horae_core::model::task::Status::Next)
+        .unwrap();
+    horae_core::repo::tasks::transition(&conn, &task.id, horae_core::model::task::Status::Done)
+        .unwrap();
+
+    app.handle_key(key('7')).unwrap(); // 切换到已完成视图
+    let idx = app
+        .items
+        .iter()
+        .position(|r| r.id == task.id)
+        .expect("已完成视图应包含该任务");
+    app.selected = idx;
+    app.load_detail();
+
+    let d = app.detail.as_ref().expect("detail should be loaded");
+    let lines = app.detail_lines(d, 60, 40);
+
+    let rendered_text = lines
+        .iter()
+        .map(|l| {
+            l.spans
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect::<Vec<_>>()
+                .join("")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        rendered_text.contains("Git Log"),
+        "时间线应包含 Git Log 标题: {}",
+        rendered_text
+    );
+    assert!(
+        rendered_text.contains("(HEAD)"),
+        "最新事件应包含 (HEAD): {}",
+        rendered_text
+    );
+    assert!(
+        rendered_text.contains("(root)"),
+        "根事件应包含 (root): {}",
+        rendered_text
+    );
+    assert!(
+        rendered_text.contains("[完成]"),
+        "完成事件应包含 [完成]: {}",
+        rendered_text
+    );
+    assert!(
+        rendered_text.contains("[创建]"),
+        "创建事件应包含 [创建]: {}",
+        rendered_text
+    );
+}
+
+#[test]
+fn test_detail_git_timeline_ascii_fallback() {
+    horae_core::repo::state::set_test_override();
+    let mut conn = Connection::open(":memory:").unwrap();
+    migrate::run(&mut conn).unwrap();
+    let mut app = app_normal(&conn);
+    app.icon_style = crate::tui::icons::IconStyle::Ascii;
+
+    let task = horae_core::repo::tasks::create_capture(
+        &conn,
+        &horae_core::repo::tasks::CaptureInput {
+            title: "ascii timeline test".into(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    horae_core::repo::tasks::transition(&conn, &task.id, horae_core::model::task::Status::Next)
+        .unwrap();
+
+    app.set_view(View::Next);
+    let idx = app
+        .items
+        .iter()
+        .position(|r| r.id == task.id)
+        .expect("下一步视图应包含该任务");
+    app.selected = idx;
+    app.load_detail();
+
+    let d = app.detail.as_ref().expect("detail should be loaded");
+    let lines = app.detail_lines(d, 60, 40);
+
+    let rendered_text = lines
+        .iter()
+        .map(|l| {
+            l.spans
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect::<Vec<_>>()
+                .join("")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        rendered_text.contains('*'),
+        "ASCII 模式下应包含 * 节点: {}",
+        rendered_text
+    );
+    assert!(
+        !rendered_text.contains('●'),
+        "ASCII 模式下不应包含 ● 字符: {}",
+        rendered_text
+    );
+    assert!(
+        !rendered_text.contains('│'),
+        "ASCII 模式下不应包含 │ 字符: {}",
+        rendered_text
+    );
+}

@@ -27,6 +27,8 @@ pub const EV_PRIORITY: &str = "priority"; // priority changed (high|medium|low|N
 
 // Events not tied to a status transition:
 pub const EV_HABIT_COMPLETED: &str = "habit_completed"; // a recurring task's occurrence done; rescheduled
+pub const EV_POMODORO_STARTED: &str = "pomodoro_started";
+pub const EV_POMODORO_ABORTED: &str = "pomodoro_aborted";
 pub const EV_POMODORO: &str = "pomodoro"; // a Pomodoro work session completed
 pub const EV_LOGGED: &str = "logged"; // a pure journal/log event
 pub const EV_CHECKLIST: &str = "checklist"; // a checklist item added/toggled/deleted/renamed/moved

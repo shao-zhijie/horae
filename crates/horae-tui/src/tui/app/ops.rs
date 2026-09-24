@@ -85,7 +85,7 @@ impl<'a> App<'a> {
         });
 
         // 2. 终止并重置番茄钟
-        let _ = horae_core::pomo::stop();
+        let _ = horae_core::pomo::stop(Some(self.conn), true);
         self.force_reload_pomo();
 
         // 3. 播放完成音效/桌面提示
@@ -164,7 +164,8 @@ impl<'a> App<'a> {
                                 task::Status::Done | task::Status::Waiting | task::Status::Someday
                             )
                         {
-                            let _ = horae_core::pomo::stop();
+                            let _ =
+                                horae_core::pomo::stop(Some(self.conn), to == task::Status::Done);
                         }
                     }
                     let t = tasks::transition(self.conn, id, to)?;
@@ -213,7 +214,10 @@ impl<'a> App<'a> {
                                             | task::Status::Someday
                                     )
                                 {
-                                    let _ = horae_core::pomo::stop();
+                                    let _ = horae_core::pomo::stop(
+                                        Some(self.conn),
+                                        to == task::Status::Done,
+                                    );
                                 }
                             }
                         }

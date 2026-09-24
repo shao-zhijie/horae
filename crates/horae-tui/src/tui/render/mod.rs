@@ -851,7 +851,7 @@ impl<'a> AppRender for App<'a> {
                 f.render_widget(empty_para, area);
             }
             Some(d) => {
-                let lines = self.detail_lines(d, area.width);
+                let lines = self.detail_lines(d, area.width, area.height);
                 let para = Paragraph::new(lines)
                     .style(Style::default().fg(self.theme.fg))
                     .block(block)

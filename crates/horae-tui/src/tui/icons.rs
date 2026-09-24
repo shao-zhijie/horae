@@ -44,6 +44,8 @@ pub enum Icon {
     Tomato,
     /// 每日成就结清标记
     Achievement,
+    /// 时间线（类 Git 提交图谱）
+    Timeline,
 }
 
 impl IconStyle {
@@ -204,6 +206,7 @@ pub fn glyph(kind: Icon, style: IconStyle) -> &'static str {
             GroupKeys => "\u{f0eb}",
             Tomato => "\u{f2f2}",
             Achievement => "\u{f05e0}",
+            Timeline => "\u{f418}",
         },
         IconStyle::Ascii => match kind {
             Inbox => "I",
@@ -225,6 +228,7 @@ pub fn glyph(kind: Icon, style: IconStyle) -> &'static str {
             GroupDay | GroupActive | GroupWaiting | GroupArchive | GroupModules | GroupKeys => "",
             Tomato => "o",
             Achievement => "!",
+            Timeline => "~",
         },
     }
 }
@@ -254,6 +258,7 @@ mod tests {
             Icon::Active,
             Icon::Tomato,
             Icon::Achievement,
+            Icon::Timeline,
         ];
         for k in kinds {
             let g = glyph(k, IconStyle::Ascii);

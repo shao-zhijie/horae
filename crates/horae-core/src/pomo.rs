@@ -32,6 +32,18 @@ pub fn start(conn: &Connection, task_id: &str) -> Result<()> {
     state.break_ended_at = None;
     pomodoro::save_state(&state)?;
 
+    let _ = crate::repo::mutate(conn, |tx, at| {
+        crate::repo::log_event(
+            tx,
+            &task.id,
+            crate::model::event::EV_POMODORO_STARTED,
+            None,
+            None,
+            None,
+            at,
+        )
+    });
+
     let exe_path = std::env::current_exe().unwrap_or_else(|_| "horae".into());
     // stdio 全部置空：daemon 是常驻后台进程，不能继承父进程的终端/管道 fd，
     // 否则调用方（脚本、测试断言）要等 daemon 结束才能读到 EOF。
@@ -52,9 +64,30 @@ pub fn start(conn: &Connection, task_id: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn stop() -> Result<()> {
+pub fn stop(conn: Option<&rusqlite::Connection>, completed: bool) -> anyhow::Result<()> {
     kill_daemon();
     let mut state = pomodoro::get_state()?;
+
+    if let (Some(db), Phase::Work, Some(ref tid)) = (conn, state.phase.clone(), &state.task_id) {
+        let now = time::now_ms();
+        let elapsed_secs = if let Some(start_ts) = state.start_ts {
+            (now - start_ts).max(0) / 1000
+        } else {
+            0
+        };
+        let (ev, meta) = if completed {
+            (crate::model::event::EV_POMODORO, elapsed_secs.to_string())
+        } else {
+            (
+                crate::model::event::EV_POMODORO_ABORTED,
+                elapsed_secs.to_string(),
+            )
+        };
+        let _ = crate::repo::mutate(db, |tx, at| {
+            crate::repo::log_event(tx, tid, ev, None, None, Some(&meta), at)
+        });
+    }
+
     state.phase = Phase::Idle;
     state.task_id = None;
     state.task_title = None;

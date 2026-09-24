@@ -28,6 +28,20 @@ impl fmt::Display for Status {
     }
 }
 
+impl Status {
+    pub fn label(self, lang: crate::i18n::Lang) -> &'static str {
+        match self {
+            Status::Inbox => crate::tr!(lang, "收件箱", "Inbox"),
+            Status::Next => crate::tr!(lang, "下一步", "Next"),
+            Status::Waiting => crate::tr!(lang, "等待中", "Waiting"),
+            Status::Scheduled => crate::tr!(lang, "已排程", "Scheduled"),
+            Status::Someday => crate::tr!(lang, "将来/也许", "Someday"),
+            Status::Reference => crate::tr!(lang, "参考资料", "Reference"),
+            Status::Done => crate::tr!(lang, "已完成", "Done"),
+        }
+    }
+}
+
 impl FromStr for Status {
     type Err = String;
 

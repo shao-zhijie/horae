@@ -97,7 +97,7 @@ impl<'a> App<'a> {
                         self.complete_pomodoro_task(tid)?;
                         return Ok(true);
                     } else {
-                        let _ = horae_core::pomo::stop();
+                        let _ = horae_core::pomo::stop(Some(self.conn), false);
                         self.force_reload_pomo();
                         self.set_toast(
                             tr!(self.lang, "🎉 专注达成！", "🎉 Focus completed!"),
@@ -326,7 +326,7 @@ impl<'a> App<'a> {
                 }
             }
             KeyCode::Char('S') => {
-                if self.note(horae_core::pomo::stop()) {
+                if self.note(horae_core::pomo::stop(Some(self.conn), false)) {
                     self.force_reload_pomo();
                     self.status_message.clear();
                     self.refresh()?;

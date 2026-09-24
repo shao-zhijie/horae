@@ -140,6 +140,8 @@ pub fn modify(conn: &Connection, id: &str, input: &ModifyInput) -> Result<Task> 
                 let from = t.status;
                 if from == task::Status::Inbox && t.clarified_at.is_none() {
                     t.clarified_at = Some(now);
+                    let to_str = new_status.to_string();
+                    log_event(tx, id, event::EV_CLARIFIED, None, Some(&to_str), None, now)?;
                 }
                 if new_status == task::Status::Done && t.completed_at.is_none() {
                     t.completed_at = Some(now);
@@ -413,6 +415,8 @@ pub fn transition(conn: &Connection, id: &str, to_status: task::Status) -> Resul
     crate::repo::mutate(conn, |tx, now| {
         if from == task::Status::Inbox && t.clarified_at.is_none() {
             t.clarified_at = Some(now);
+            let to_str = to_status.to_string();
+            log_event(tx, id, event::EV_CLARIFIED, None, Some(&to_str), None, now)?;
         }
 
         if to_status == task::Status::Done {
@@ -558,6 +562,15 @@ pub fn schedule(
     crate::repo::mutate(conn, |tx, now| {
         if from == task::Status::Inbox && t.clarified_at.is_none() {
             t.clarified_at = Some(now);
+            log_event(
+                tx,
+                id,
+                event::EV_CLARIFIED,
+                None,
+                Some("scheduled"),
+                None,
+                now,
+            )?;
         }
         t.scheduled_start_at = Some(start_ms);
         t.scheduled_end_at = end_ms;

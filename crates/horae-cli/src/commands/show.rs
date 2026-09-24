@@ -61,22 +61,59 @@ pub fn run(conn: &Connection, id: &str, json: bool) -> Result<()> {
             .join(", ")
     );
     println!();
-    println!("Timeline (stored as UTC-ms, shown in local time):");
-    for e in &events {
-        let raw = e.meta.as_deref().unwrap_or("");
-        // 结构化 meta（JSON 对象）提取可读字段展示；旧数据/非 JSON 原样输出。
-        let meta = serde_json::from_str::<serde_json::Value>(raw)
-            .ok()
-            .and_then(|v| v.get("reason").and_then(|r| r.as_str()).map(str::to_string))
-            .unwrap_or_else(|| raw.to_string());
-        println!(
-            "  {}  {:<16} {} -> {}  {}",
-            time::format_local(Some(e.at)),
-            e.event_type,
-            e.from_status.as_deref().unwrap_or("-"),
-            e.to_status.as_deref().unwrap_or("-"),
-            meta
-        );
+    let lang = crate::cli_i18n::detect_lang();
+    println!("Timeline (Git Log):");
+    if events.is_empty() {
+        println!("  (no events)");
+    } else {
+        let total = events.len();
+        for (idx, e) in events.iter().rev().enumerate() {
+            let is_head = idx == 0;
+            let is_root = idx == total - 1;
+            let entry = horae_core::repo::tasks::describe_event(e, lang);
+            let time_str = time::format_local(Some(entry.at));
+
+            let ref_tag = if is_head && is_root {
+                " \x1b[1;38;2;137;180;250m(HEAD, root)\x1b[0m"
+            } else if is_head {
+                " \x1b[1;38;2;137;180;250m(HEAD)\x1b[0m"
+            } else if is_root {
+                " \x1b[38;2;108;112;134m(root)\x1b[0m"
+            } else {
+                ""
+            };
+
+            let node_color = if is_head {
+                "\x1b[1;38;2;137;180;250m"
+            } else if entry.event_type == event::EV_COMPLETED
+                || entry.event_type == event::EV_HABIT_COMPLETED
+            {
+                "\x1b[38;2;166;227;161m"
+            } else if entry.event_type == event::EV_POMODORO
+                || entry.event_type == event::EV_POMODORO_STARTED
+            {
+                "\x1b[38;2;250;179;135m"
+            } else {
+                "\x1b[38;2;108;112;134m"
+            };
+
+            let badge_color = match entry.event_type.as_str() {
+                event::EV_COMPLETED | event::EV_HABIT_COMPLETED => "\x1b[1;38;2;166;227;161m",
+                event::EV_POMODORO | event::EV_POMODORO_STARTED => "\x1b[1;38;2;250;179;135m",
+                event::EV_POMODORO_ABORTED | event::EV_ARCHIVED => "\x1b[38;2;243;139;168m",
+                event::EV_STATUS_CHANGED | event::EV_SCHEDULED => "\x1b[38;2;137;180;250m",
+                _ => "\x1b[38;2;108;112;134m",
+            };
+
+            println!(
+                "  {}* \x1b[0m \x1b[38;2;108;112;134m{}\x1b[0m  {}[{}]\x1b[0m{}  {}",
+                node_color, time_str, badge_color, entry.badge, ref_tag, entry.description,
+            );
+
+            if !is_root {
+                println!("  \x1b[38;2;69;71;90m|\x1b[0m");
+            }
+        }
     }
     Ok(())
 }
