@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-10
+
+### Fixed
+
+- **修复 `calendar --short` 输出断言的日期依赖型偶发失败**：当日附近无节气/节日时，紧凑单行仅含农历简述一段、不出现 `·` 分隔符，原测试因此偶发失败；改为校验农历简述（必含「月」），并将分隔符 `·` 的校验移到固定日期（中秋节 2026-09-25）。
+
 ## [0.2.1] - 2026-09-10
 
 ### Performance

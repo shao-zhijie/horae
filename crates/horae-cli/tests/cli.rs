@@ -541,12 +541,22 @@ fn modify_quick_add_and_explicit_flags() {
 fn calendar_command_short_and_json_outputs() {
     let env = env();
 
-    // 1. 测试 --short 紧凑单行
+    // 1. 测试 --short 紧凑单行（农历简述始终含「月」，不依赖当日是否有节气/节日）
     let out = env.cmd().args(["calendar", "--short"]).output().unwrap();
     assert!(out.status.success());
     let s = String::from_utf8_lossy(&out.stdout);
     assert!(!s.trim().is_empty());
-    assert!(s.contains("·"));
+    assert!(s.contains("月"), "short 输出应为农历简述，含月份: {s}");
+
+    // 1b. 验证多段拼接的分隔符 ·（以中秋节 2026-09-25 为例，当日必有多段）
+    let out = env
+        .cmd()
+        .args(["cal", "2026-09-25", "--short"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("·"), "多段 short 输出应含分隔符 ·: {s}");
 
     // 2. 测试指定日期与 --json 结构化输出（以中秋节 2026-09-25 为例）
     let out = env
