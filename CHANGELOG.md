@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **文档结构重整**：`docs/` 目录解散，文档全部平铺到仓库根目录——`README.md`（英文手册，crates.io / npm 入口）、`README_CN.md`（中文手册）、`ARCHITECTURE.md`（架构与领域词汇，由原 `architecture-handoff.md` / `CONTEXT.md` / `design-profiles-and-cloud.md` 合并精简）、`CONTRIBUTING.md`（新增贡献流程）、`AGENTS.md`、`CHANGELOG.md`；AI 技能包迁入 `.agents/skills/horae/`。原 `issues.md`（问题均已修复）与 `focus-algorithm.md`（内容并入手册「专注推荐」一节）删除。手册同步去除营销化表述，改为事实性说明。
+
 ## [0.2.2] - 2026-10-10
 
 ### Fixed

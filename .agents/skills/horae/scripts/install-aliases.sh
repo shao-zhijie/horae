@@ -28,7 +28,7 @@ alias hstats='horae stats'               # 看板
 alias hbk='horae export'                 # 备份到 JSON
 alias htags='horae tags'                 # 标签库"
 
-HEADER="# horae (GTD terminal task manager) 高频别名 —— 由 docs/skills/horae/scripts/install-aliases.sh 生成"
+HEADER="# horae (GTD terminal task manager) 高频别名 —— 由 .agents/skills/horae/scripts/install-aliases.sh 生成"
 
 BLOCK_BASH="$MARK_BEGIN
 $HEADER

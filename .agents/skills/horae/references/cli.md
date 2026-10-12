@@ -121,7 +121,7 @@ horae do              # 打印当前最该做的一件事 + 推荐分数
 horae do --start      # 同时启动番茄钟
 ```
 
-推荐算法（详见仓库 docs/focus-algorithm.md）：过滤掉 Someday/Reference/Done 及未到点的
+推荐算法（详见仓库 README_CN.md「专注推荐」一节）：过滤掉 Someday/Reference/Done 及未到点的
 Scheduled/Waiting 后打分——优先级 `high` +10000（统治级）、`medium` +5000、`low` +1000；
 逾期 +2000 且每多逾期一天 +10（封顶 +500）、今天到期 +1000；Next 状态 +500；
 同分比创建时间，越早越优先。
