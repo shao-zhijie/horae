@@ -2,7 +2,7 @@
 
 终端里的 GTD 任务管理工具，或者叫todo工具也可以：单个 Rust 二进制，内置 SQLite，同时提供 CLI 与 ratatui TUI。无服务器、无账号、无遥测，数据全部存放在 `~/.config/horae/`。
 
-设计围绕两件事展开。第一，**录入的成本要接近于零**——脑子里冒出一件事，一行字、不到一秒就进了收件箱，且不打断你手上正在做的事。第二，**任务的信息不能丢**——每次状态变更、排程调整与打卡完成都会盖上一个 UTC 毫秒时间戳，并追加进只增的 `task_events` 时间线，每个任务都完整保留自己的生命周期履历，`horae show <id>` 可以完整回放，而不是只看到一个当前状态。
+设计围绕两件事展开。第一，**录入的成本要接近于零**——从脑海里产生想法到完成记录不到十秒钟（简单记录），且不打断你手上正在做的事。第二，**任务的信息不能丢**——每次状态变更、排程调整与打卡完成都会盖上一个 UTC 毫秒时间戳，并追加进只增的 `task_events` 时间线，每个任务都完整保留自己的生命周期履历，`horae show <id>` 可以完整回放，而不是只看到一个当前状态。
 
 <p>
   <a href="https://github.com/zhaohang1205/horae/actions/workflows/ci.yml"><img src="https://github.com/zhaohang1205/horae/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
