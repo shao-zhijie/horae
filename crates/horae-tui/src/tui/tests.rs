@@ -3381,7 +3381,6 @@ fn bilingual_completion_candidates_and_parsing() {
         app.completion_candidates.contains(&"下周一".to_string()),
         "中文模式包含 '下周一' 候选"
     );
-    assert!(true);
 
     // 2. 解析端仍完整支持 今天/明天/后天
     assert!(horae_core::time::parse_time("今天 15:00").is_ok());
