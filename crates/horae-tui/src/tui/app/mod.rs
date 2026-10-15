@@ -380,12 +380,7 @@ impl<'a> App<'a> {
             settings_map.get("lunar_reminder").map(|s| s.as_str()),
             Some("0")
         );
-        let calendar_info = if lunar_enabled {
-            let today = chrono::Local::now().naive_local().date();
-            horae_core::lunar::day_calendar_info(today)
-        } else {
-            None
-        };
+        // 农历卡片由 [`App::refresh`] 统一计算（构造末尾必跑一次），此处不重复算。
         let mut app = App {
             conn,
             view: View::Inbox,
@@ -432,7 +427,8 @@ impl<'a> App<'a> {
             counts: std::collections::HashMap::new(),
             rrule_cache: std::collections::HashMap::new(),
             pomo: horae_core::repo::pomodoro::get_state().unwrap_or_default(),
-            pomo_loaded_ms: 0,
+            // 上一行刚读完 pomo.json：打上时间戳，避免主循环首帧又重复读一次。
+            pomo_loaded_ms: horae_core::time::now_ms(),
             completion_candidates: Vec::new(),
             completion_index: 0,
             completion_range: None,
@@ -448,7 +444,7 @@ impl<'a> App<'a> {
             zen_capture,
             flash_mode,
             lunar_enabled,
-            calendar_info,
+            calendar_info: None,
         };
         app.refresh()?;
 
