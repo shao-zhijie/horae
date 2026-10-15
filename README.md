@@ -1,18 +1,96 @@
 # horae
 
-A GTD task manager for the terminal: one Rust binary with an embedded SQLite database, a CLI, and a ratatui TUI. No server, no account, no telemetry — everything lives in `~/.config/horae/`.
-
-Two things drive the design. First, **capture should cost nothing**: a thought gets from your head into the inbox in a single line, in well under a second, without pulling you out of whatever you were doing. Second, **nothing about a task should be lost**: every status change, reschedule and check-in is stamped with a UTC-millisecond timestamp and appended to an append-only `task_events` timeline, so every task keeps the full record of its own lifecycle and `horae show <id>` replays it.
+> **Idea → captured in under 10 seconds. Written in Rust.**  
+> Sub-second startup · reactive completions as you type · one-line syntax · full GTD · no account
 
 <p>
   <a href="https://github.com/zhaohang1205/horae/actions/workflows/ci.yml"><img src="https://github.com/zhaohang1205/horae/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/zhaohang1205/horae/actions/workflows/release.yml"><img src="https://github.com/zhaohang1205/horae/actions/workflows/release.yml/badge.svg" alt="Release"></a>
   <a href="https://crates.io/crates/horae"><img src="https://img.shields.io/crates/v/horae.svg" alt="Crates.io"></a>
+  <a href="https://crates.io/crates/horae"><img src="https://img.shields.io/crates/d/horae.svg" alt="Downloads"></a>
   <a href="https://www.npmjs.com/package/horae-cli"><img src="https://img.shields.io/npm/v/horae-cli.svg" alt="npm"></a>
+  <a href="https://www.npmjs.com/package/horae-cli"><img src="https://img.shields.io/npm/dm/horae-cli.svg" alt="npm downloads"></a>
+  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/MSRV-1.89-orange.svg" alt="MSRV 1.89"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="License"></a>
+  <a href="https://github.com/zhaohang1205/horae"><img src="https://img.shields.io/github/stars/zhaohang1205/horae?style=social" alt="GitHub Stars"></a>
 </p>
 
+## The capture experience
+
+Most task managers make you pay a tax every time you capture: switch app, wait for it to load, find the input field, pick a project, set a date, close the dialog. **horae eliminates that tax entirely.**
+
+```
+$ horae -f
+```
+
+That's it. Flash mode opens **directly on the input line** — no splash screen, no list view, no navigation.
+Start typing and the cursor is already blinking. Fill in the task, press Enter. Done. The window closes.
+
+```
+dentist appointment ~fri 14:00 @health !high ↵
+✓ captured  (#a3f)                              [horae exits]
+```
+
+**Time from idea to captured: under 10 seconds.**
+
+### Why so fast?
+
+horae is a **Rust binary with ~2 ms of startup overhead** — the font probe reads font directories directly instead of shelling out, settings load in a single batched SQL query, and input-method detection runs on a background thread so it never blocks the cursor.
+
+### Reactive completions, no Tab required
+
+Type `@`, `~`, `*`, or `!` and a completion panel appears instantly — no Tab, no delay.
+
+```
+dentist appointment ~fr█
+                    ┌──────────────────────────┐
+                    │ ~fri    → this Friday     │  ← highlighted
+                    │ ~fri2   → next Friday     │
+                    │ ~friday → (same as ~fri)  │
+                    └──────────────────────────┘
+```
+
+`Tab` accepts the top candidate. `Up`/`Down` (or Vim `j`/`k`) moves through the list.
+`Enter` completes **and** submits in one keystroke — zero extra keypresses.
+
+Two completion styles (toggle under `F7`):
+- **Reference** — token, meaning and a syntax example shown side-by-side
+- **Speed** — compact list with ghost text inlined directly in the input
+
+### The full syntax, on one line
+
+```
+buy milk @home ~today 18:00 *2w[1,3] !high
+│         │     │            │        └─ priority
+│         │     │            └────────── recurrence: every 2 weeks, Mon+Wed
+│         │     └─────────────────────── scheduled time  (start or deadline)
+│         └───────────────────────────── tag
+└─────────────────────────────────────── title
+```
+
+Tokens can be in any order. Full-width punctuation (`＠ ～ ＊ ！`) is accepted too — Chinese IME users never need to switch to half-width.
+
+---
+
+|  | **horae** | Taskwarrior | todo.txt |
+|--|--|--|--|
+| Startup overhead | **~2 ms** (Rust binary) | ~50–200 ms | ~0 ms (shell) |
+| Input → captured | **< 10 s** (flash mode) | ~30 s | ~15 s |
+| Reactive completions | **✅ auto-popup** | ❌ | ❌ |
+| TUI | ✅ ratatui, keyboard-driven | ⚠️ separate project | ❌ |
+| Recurring habits | ✅ RRULE engine built-in | ✅ | ❌ |
+| Pomodoro | ✅ daemon + waybar | ❌ | ❌ |
+| Phone push | ✅ ntfy / Syncthing | ❌ | ❌ |
+| Install without Rust | ✅ `npx horae-cli` | ⚠️ package manager | ✅ |
+| Storage | SQLite (single file) | proprietary text | plain text |
+| Offline / no account | ✅ | ✅ | ✅ |
+
+A GTD task manager built in Rust: one binary with an embedded SQLite database, a CLI, and a [ratatui](https://ratatui.rs) TUI. No server, no account, no telemetry — everything lives in `~/.config/horae/`.
+
+Nothing about a task is ever lost: every status change, reschedule and check-in is stamped with a UTC-millisecond timestamp and appended to an append-only `task_events` timeline. `horae show <id>` replays the full history.
+
 中文手册：[README_CN.md](README_CN.md)
+
 
 ## Contents
 

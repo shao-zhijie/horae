@@ -4,11 +4,11 @@ version = "0.2.2"
 edition = "2021"
 rust-version = "1.89"
 license = "GPL-3.0"
-description = "GTD terminal task manager (data layer + CLI), with time-datafication and a tag system"
+description = "Capture a task in under 10 seconds. GTD terminal manager (ratatui TUI + CLI) with ~2 ms startup, reactive completions, recurring habits, pomodoro, and phone sync. Rust + SQLite, fully offline."
 readme = "../../README.md"
 repository = "https://github.com/zhaohang1205/horae"
-keywords = ["gtd", "todo", "tui", "task-manager", "pomodoro"]
-categories = ["command-line-utilities"]
+keywords = ["gtd", "productivity", "tui", "pomodoro", "sqlite"]
+categories = ["command-line-utilities", "database"]
 default-run = "horae"
 
 [[bin]]

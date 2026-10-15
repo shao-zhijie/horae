@@ -4,8 +4,10 @@ version = "0.2.2"
 edition = "2021"
 rust-version = "1.89"
 license = "GPL-3.0"
-description = "Core data layer and business logic for horae (GTD task manager)"
+description = "Core library for the horae GTD task manager: SQLite data layer, scheduling engine, recurrence rules (RRULE), and time parsing. Written in Rust."
 repository = "https://github.com/zhaohang1205/horae"
+keywords = ["gtd", "productivity", "sqlite", "scheduling", "task-manager"]
+categories = ["command-line-utilities", "database"]
 
 [dependencies]
 rusqlite = { version = "0.32", features = ["bundled"] }

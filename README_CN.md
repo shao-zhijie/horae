@@ -1,18 +1,96 @@
 # horae — GTD 终端任务管理器
 
-终端里的 GTD 任务管理工具，或者叫todo工具也可以：单个 Rust 二进制，内置 SQLite，同时提供 CLI 与 ratatui TUI。无服务器、无账号、无遥测，数据全部存放在 `~/.config/horae/`。
-
-设计围绕两件事展开。第一，**录入的成本要接近于零**——从脑海里产生想法到完成记录不到十秒钟（简单记录），且不打断你手上正在做的事。第二，**任务的信息不能丢**——每次状态变更、排程调整与打卡完成都会盖上一个 UTC 毫秒时间戳，并追加进只增的 `task_events` 时间线，每个任务都完整保留自己的生命周期履历，`horae show <id>` 可以完整回放，而不是只看到一个当前状态。
+> **脑子里冒出一个想法，10 秒内进收件箱。Rust 编写。**  
+> 亚秒级启动 · 输入时响应式提示 · 一句话语法 · 完整 GTD · 无账号
 
 <p>
   <a href="https://github.com/zhaohang1205/horae/actions/workflows/ci.yml"><img src="https://github.com/zhaohang1205/horae/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/zhaohang1205/horae/actions/workflows/release.yml"><img src="https://github.com/zhaohang1205/horae/actions/workflows/release.yml/badge.svg" alt="Release"></a>
   <a href="https://crates.io/crates/horae"><img src="https://img.shields.io/crates/v/horae.svg" alt="Crates.io"></a>
+  <a href="https://crates.io/crates/horae"><img src="https://img.shields.io/crates/d/horae.svg" alt="下载量"></a>
   <a href="https://www.npmjs.com/package/horae-cli"><img src="https://img.shields.io/npm/v/horae-cli.svg" alt="npm"></a>
+  <a href="https://www.npmjs.com/package/horae-cli"><img src="https://img.shields.io/npm/dm/horae-cli.svg" alt="npm 月下载"></a>
+  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/MSRV-1.89-orange.svg" alt="MSRV 1.89"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="License"></a>
+  <a href="https://github.com/zhaohang1205/horae"><img src="https://img.shields.io/github/stars/zhaohang1205/horae?style=social" alt="GitHub Stars"></a>
 </p>
 
+## 录入体验
+
+大多数任务管理工具每次录入都要收一笔"税"：切换应用、等待加载、找到输入框、选项目、设日期、关对话框。**horae 把这笔税降到零。**
+
+```
+$ horae -f
+```
+
+就这一行。Flash 模式会**直接打开在输入行上**——没有启动画面，没有列表视图，没有导航。
+开始打字时光标已经在闪了。填完任务，回车，窗口关闭，结束。
+
+```
+看牙 ~周五 14:00 @健康 !high ↵
+✓ 已记录  (#a3f)                  [horae 退出]
+```
+
+**从产生想法到完成录入：不到 10 秒。**
+
+### 为什么这么快？
+
+horae 是一个 **Rust 二进制，启动开销约 2 ms**——字体探测直接读字体目录而不 shell out，设置项用一条批量 SQL 查询加载，输入法切换在后台线程异步执行，不阻塞光标。
+
+### 响应式提示，不需要按 Tab
+
+输入 `@`、`~`、`*` 或 `!` 时提示框立刻弹出——无需 Tab，无延迟。
+
+```
+看牙 ~周█
+       ┌────────────────────────────┐
+       │ ~周一  → 本周一            │  ← 高亮
+       │ ~周二  → 本周二            │
+       │ ~周三  → 本周三            │
+       └────────────────────────────┘
+```
+
+`Tab` 接受高亮候选项。`↑`/`↓`（或 Vim 的 `j`/`k`）在列表中移动。
+`Enter` **一键完成并提交**——零多余按键。
+
+两种提示风格（`F7` 切换）：
+- **参考模式** — 并排显示 token、含义和语法示例
+- **极速模式** — 紧凑列表，候选文本以幽灵字直接内联在输入行
+
+### 完整语法，一行搞定
+
+```
+买牛奶 @home ~今天 18:00 *2w[1,3] !high
+│       │     │           │        └─ 优先级
+│       │     │           └────────── 循环：每两周的周一和周三
+│       │     └─────────────────────── 计划时间（开始或截止）
+│       └───────────────────────────── 标签
+└─────────────────────────────────────── 标题
+```
+
+Token 顺序任意。全角标点（`＠ ～ ＊ ！`）同样被接受——中文输入法用户无需切换半角。
+
+---
+
+|  | **horae** | Taskwarrior | todo.txt |
+|--|--|--|--|
+| 启动开销 | **~2 ms**（Rust 二进制） | ~50–200 ms | ~0 ms（shell）|
+| 录入耗时 | **< 10 s**（flash 模式）| ~30 s | ~15 s |
+| 响应式提示 | **✅ 自动弹出** | ❌ | ❌ |
+| TUI | ✅ ratatui，键盘驱动 | ⚠️ 独立项目 | ❌ |
+| 循环习惯 | ✅ 内置 RRULE 引擎 | ✅ | ❌ |
+| 番茄钟 | ✅ 后台守护 + waybar | ❌ | ❌ |
+| 手机推送 | ✅ ntfy / Syncthing | ❌ | ❌ |
+| 无需 Rust 安装 | ✅ `npx horae-cli` | ⚠️ 需包管理器 | ✅ |
+| 存储格式 | SQLite（单文件） | 私有文本 | 纯文本 |
+| 离线 / 无账号 | ✅ | ✅ | ✅ |
+
+Rust 编写的 GTD 任务管理工具：单个二进制，内置 SQLite，同时提供 CLI 与 [ratatui](https://ratatui.rs) TUI。无服务器、无账号、无遥测，数据全部存放在 `~/.config/horae/`。
+
+任务的信息永远不会丢失：每次状态变更、排程调整与打卡完成都会盖上一个 UTC 毫秒时间戳，并追加进只增的 `task_events` 时间线。`horae show <id>` 可以完整回放历史。
+
 English manual: [README.md](README.md)
+
 
 ## 目录
 

@@ -4,8 +4,10 @@ version = "0.2.2"
 edition = "2021"
 rust-version = "1.89"
 license = "GPL-3.0"
-description = "TUI frontend for horae (GTD task manager)"
+description = "Ratatui TUI frontend for the horae GTD task manager. Keyboard-driven, Catppuccin theme, bilingual (EN/ZH). Written in Rust."
 repository = "https://github.com/zhaohang1205/horae"
+keywords = ["tui", "ratatui", "gtd", "productivity", "task-manager"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 horae-core = { path = "../horae-core", version = "0.2.2" }
