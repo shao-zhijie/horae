@@ -118,9 +118,17 @@ pub fn run_with_mode(
     profile: Option<&str>,
     launch_mode: LaunchMode,
 ) -> Result<()> {
+    // TUI 全程不显示终端硬件光标（仅输入态由 ratatui 自行在帧内显示）：
+    // 在任何初始化之前先隐藏，避免启动期（建 App、开屏退出到首帧这段时间）
+    // 出现「光标闪一下又消失」的现象；退出时再统一恢复。
+    let mut stdout = io::stdout();
+    execute!(stdout, crossterm::cursor::Hide)?;
     // 先把真正耗时的初始化（加载数据、构建 App）做完——这一刻才是「启动完成」的时点。
     // 在此冻结启动用时，开屏读到的才是包含全部初始化成本的准确值，而非开屏前的 0ms。
-    let mut app = App::new_with_mode(conn, launch_mode)?;
+    let mut app = App::new_with_mode(conn, launch_mode).inspect_err(|_| {
+        // 初始化失败要把光标还给终端，否则异常退出后 shell 光标不可见。
+        let _ = execute!(stdout, crossterm::cursor::Show);
+    })?;
     app.profile_name = profile
         .map(|s| s.to_string())
         .or_else(|| {
@@ -138,8 +146,9 @@ pub fn run_with_mode(
         // 未开启开屏页时，在此冻结启动用时快照
         let _ = horae_core::time::boot_elapsed();
     }
+    // 开屏结束时已把光标还给终端，进入主界面前再次隐藏，保证整段生命周期连续隐藏。
+    execute!(stdout, crossterm::cursor::Hide)?;
     enable_raw_mode()?;
-    let mut stdout = io::stdout();
     execute!(
         stdout,
         EnterAlternateScreen,
