@@ -188,8 +188,27 @@ impl<'a> App<'a> {
         let candidates = match prefix {
             '@' => self.tag_candidates(token),
             '~' => {
-                let base = crate::tui::keys::time_candidates(self.lang);
-                filter_and_sort_candidates('~', &base, token, self.lang)
+                // Suppress time completions if the full input already has a resolved
+                // time_str that did NOT come from the word currently being typed.
+                // This handles the case where the user typed a bare HH:MM (no `~`)
+                // earlier in the line: the parser already captured it as time_str,
+                // so offering a second time completion slot would be confusing.
+                let already_has_time = {
+                    // Build a version of the input with the current tilde-word removed,
+                    // then check if a time is still parsed from the remaining text.
+                    let (ws, we) = (word_start, self.input_cursor);
+                    let without_current: String =
+                        format!("{}{}", &self.input[..ws], &self.input[we..]);
+                    horae_core::parser::parse_quick_add(&without_current)
+                        .time_str
+                        .is_some()
+                };
+                if already_has_time {
+                    Vec::new()
+                } else {
+                    let base = crate::tui::keys::time_candidates(self.lang);
+                    filter_and_sort_candidates('~', &base, token, self.lang)
+                }
             }
             '*' => {
                 let base = rrule_candidates_for(token);
@@ -204,6 +223,7 @@ impl<'a> App<'a> {
             }
             _ => Vec::new(),
         };
+
         if candidates.is_empty() {
             return;
         }

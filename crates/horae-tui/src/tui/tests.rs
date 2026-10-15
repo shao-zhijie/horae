@@ -3972,6 +3972,61 @@ fn capture_slot_hints_on_open_and_no_redundant_syntax_hint() {
 }
 
 #[test]
+/// 裸 HH:MM（无 `~` 前缀）被 parser 解析为时间后，`~时间` 提示槽应当消失。
+/// 这是 regression test for: bare time not suppressing the ~time hint slot.
+fn bare_hhmm_suppresses_time_hint_slot() {
+    horae_core::repo::state::set_test_override();
+    let mut conn = Connection::open(":memory:").unwrap();
+    migrate::run(&mut conn).unwrap();
+    let mut app = app_normal(&conn);
+    let mut term = Terminal::new(TestBackend::new(120, 30)).unwrap();
+
+    // 进入录入模式。
+    app.handle_key(key('a')).unwrap();
+    assert_eq!(app.mode, Mode::Capturing);
+
+    // 输入 "看牙 14:00 "（裸时间，无 ~ 前缀），parser 会把 14:00 识别为 time_str。
+    for c in "看牙 14:00 ".chars() {
+        app.handle_key(key(c)).unwrap();
+    }
+    term.clear().unwrap();
+    term.draw(|f| app.render(f)).unwrap();
+    let s = norm(&snap(&term));
+
+    // ~时间 槽位不应再出现。
+    assert!(
+        !s.contains("[~时间]"),
+        "裸 HH:MM 已被解析为时间，[~时间] 槽位不应再提示，实际渲染:\n{s}"
+    );
+    // 其余槽位仍然应该存在。
+    assert!(
+        s.contains("[*周期]"),
+        "未填循环的槽位仍需显示，实际渲染:\n{s}"
+    );
+}
+
+#[test]
+/// 输入裸 HH:MM 后再键入 `~`，补全候选面板不应弹出（时间已存在）。
+fn bare_hhmm_suppresses_tilde_completion_panel() {
+    horae_core::repo::state::set_test_override();
+    let mut conn = Connection::open(":memory:").unwrap();
+    migrate::run(&mut conn).unwrap();
+    let mut app = app_normal(&conn);
+
+    // 进入录入模式，输入裸时间后再输入 ~。
+    app.handle_key(key('a')).unwrap();
+    for c in "看牙 14:00 ~".chars() {
+        app.handle_key(key(c)).unwrap();
+    }
+
+    // 补全候选面板不应弹出。
+    assert!(
+        !app.completion_active(),
+        "裸 HH:MM 已存在时，~ 补全候选面板不应弹出"
+    );
+}
+
+#[test]
 fn zen_capture_toggle_via_f7_persists() {
     horae_core::repo::state::set_test_override();
     let mut conn = Connection::open(":memory:").unwrap();

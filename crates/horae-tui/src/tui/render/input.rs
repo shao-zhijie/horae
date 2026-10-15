@@ -151,9 +151,12 @@ impl<'a> App<'a> {
         {
             let tokens = tokenize_quick_add(&self.input);
             let has_tag = tokens.iter().any(|t| t.kind == QuickAddKind::Tag);
-            let has_time = tokens.iter().any(|t| t.kind == QuickAddKind::Time);
+            // Use parse_quick_add so that bare HH:MM (no `~`) is also counted as a
+            // resolved time and correctly suppresses the ~time hint slot.
+            let has_time = parse_quick_add(&self.input).time_str.is_some();
             let has_rrule = tokens.iter().any(|t| t.kind == QuickAddKind::Rrule);
             let has_prio = tokens.iter().any(|t| t.kind == QuickAddKind::Priority);
+
             let mut slots = Vec::new();
             if !has_rrule {
                 slots.push(tr!(self.lang, "*周期", "*rrule"));
