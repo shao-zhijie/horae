@@ -50,7 +50,7 @@ cargo install horae
 cargo install --git https://github.com/zhaohang1205/horae   # main 最新开发版
 ```
 
-国内可用 Gitee 镜像加速：`cargo install --git https://gitee.com/zhao-hang1205/hora.git`。
+国内可用 Gitee 镜像加速(可能会滞后一些)：`cargo install --git https://gitee.com/zhao-hang1205/hora.git`。
 
 **源码构建：**
 
