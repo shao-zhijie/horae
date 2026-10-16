@@ -150,11 +150,13 @@ fn days_between(from_ms: i64, to_ms: i64) -> i64 {
 }
 
 /// Compact relative description of a due/scheduled timestamp for list rows.
-/// Returns `None` when `ms` is `None`. Examples: "逾期2天", "明天", "3天后",
-/// "逾期5小时", "2分钟后". Past timestamps uniformly report how overdue they are
-/// (逾期X分钟/小时/天); within ±24h it reports precise minutes/hours, beyond
-/// that it classifies by local calendar day.
-pub fn relative_due(lang: crate::i18n::Lang, ms: Option<i64>) -> Option<String> {
+/// If `is_deadline` is false (planned start), past timestamps report "已过X分/小时/天"
+/// instead of "逾期X分/小时/天" to avoid misleading users on scheduled actions.
+pub fn relative_schedule(
+    lang: crate::i18n::Lang,
+    ms: Option<i64>,
+    is_deadline: bool,
+) -> Option<String> {
     let ms = ms?;
     let now = now_ms();
     let diff = ms - now;
@@ -165,14 +167,22 @@ pub fn relative_due(lang: crate::i18n::Lang, ms: Option<i64>) -> Option<String> 
         if hours.abs() < 1.0 {
             let m = (hours * 60.0).abs().round().max(1.0) as i64;
             return Some(if diff < 0 {
-                crate::tr!(lang, "逾期{}分钟", "{}m overdue", m)
+                if is_deadline {
+                    crate::tr!(lang, "逾期{}分钟", "{}m overdue", m)
+                } else {
+                    crate::tr!(lang, "已过{}分钟", "{}m ago", m)
+                }
             } else {
                 crate::tr!(lang, "{}分钟后", "in {}m", m)
             });
         }
         let h = hours.abs().round() as i64;
         return Some(if diff < 0 {
-            crate::tr!(lang, "逾期{}小时", "{}h overdue", h)
+            if is_deadline {
+                crate::tr!(lang, "逾期{}小时", "{}h overdue", h)
+            } else {
+                crate::tr!(lang, "已过{}小时", "{}h ago", h)
+            }
         } else {
             crate::tr!(lang, "{}小时后", "in {}h", h)
         });
@@ -185,9 +195,16 @@ pub fn relative_due(lang: crate::i18n::Lang, ms: Option<i64>) -> Option<String> 
         } else {
             crate::tr!(lang, "{}天后", "in {}d", d)
         }
-    } else {
+    } else if is_deadline {
         crate::tr!(lang, "逾期{}天", "{}d overdue", -d)
+    } else {
+        crate::tr!(lang, "已过{}天", "{}d ago", -d)
     })
+}
+
+/// Compact relative description of a due timestamp for list rows.
+pub fn relative_due(lang: crate::i18n::Lang, ms: Option<i64>) -> Option<String> {
+    relative_schedule(lang, ms, true)
 }
 
 /// Compact relative description of when a task was completed, for the Done view.

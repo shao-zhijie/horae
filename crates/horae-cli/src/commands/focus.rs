@@ -102,7 +102,14 @@ pub fn run(conn: &Connection, start: bool) -> Result<()> {
         println!("🎯 专注目标 (推荐分数: {})", score);
         println!("📝 {}", task.title);
         if let Some(due) = schedule::effective_due(task) {
-            println!("⏰ 截止: {}", time::format_local(Some(due)));
+            let label = if task.due_at.is_some() {
+                "截止"
+            } else if task.rrule.is_some() {
+                "周期发生"
+            } else {
+                "计划开始"
+            };
+            println!("⏰ {}: {}", label, time::format_local(Some(due)));
         }
 
         if start {

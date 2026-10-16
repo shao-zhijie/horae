@@ -38,6 +38,28 @@ impl Lang {
             Lang::En => Lang::Zh,
         }
     }
+
+    /// 检测当前语言：优先从 DB `settings.lang` 读取，次之环境变量 `HORAE_LANG`，缺省为 `Lang::Zh`。
+    pub fn detect(conn: Option<&rusqlite::Connection>) -> Self {
+        if let Some(conn) = conn {
+            if let Ok(Some(val)) = crate::repo::settings::get(conn, "lang") {
+                if val == "en" {
+                    return Lang::En;
+                } else if val == "zh" {
+                    return Lang::Zh;
+                }
+            }
+        }
+        if let Ok(val) = std::env::var("HORAE_LANG") {
+            let lower = val.to_ascii_lowercase();
+            if lower == "en" || lower == "english" {
+                return Lang::En;
+            } else if lower == "zh" || lower == "chinese" {
+                return Lang::Zh;
+            }
+        }
+        Lang::Zh
+    }
 }
 
 /// Pick the translation for the current language.

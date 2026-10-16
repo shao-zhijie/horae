@@ -103,6 +103,7 @@ pub(crate) fn row_from_tags_with_due(
         total,
         archive_reason: t.archive_reason.clone(),
         checked_in_today: false,
+        is_deadline: t.rrule.is_some() || t.due_at.is_some(),
     }
 }
 pub mod splash;

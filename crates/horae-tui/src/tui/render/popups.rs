@@ -206,8 +206,8 @@ impl<'a> App<'a> {
             crate::tui::app::Popup::TaskDueNow(_, title) => {
                 let mut lines = vec![Line::from(tr!(
                     self.lang,
-                    "有任务已到期，需要立即处理：",
-                    "A task is due now, handle it now:"
+                    "有任务到期或已到开始时间，需要立即处理：",
+                    "A task is due or starting now, handle it now:"
                 ))];
                 lines.push(Line::from(""));
                 lines.push(Line::from(Span::styled(

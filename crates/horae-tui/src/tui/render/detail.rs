@@ -73,21 +73,13 @@ impl<'a> App<'a> {
             ]));
         }
 
-        // 截止时间
-        lines.push(Line::from(vec![
-            Span::styled(
-                tr!(self.lang, "截止: ", "Due: "),
-                Style::default().fg(self.theme.text_dim),
-            ),
-            Span::raw(time::format_local(d.task.due_at)),
-        ]));
-
         // 计划时间：具体时间显示排程起点；循环任务显示最近一次计划执行日期
-        if d.task.scheduled_start_at.is_some()
+        let has_schedule = d.task.scheduled_start_at.is_some()
             || d.task.scheduled_end_at.is_some()
             || (d.task.rrule.is_some()
-                && (d.task.scheduled_start_at.is_some() || d.task.due_at.is_some()))
-        {
+                && (d.task.scheduled_start_at.is_some() || d.task.due_at.is_some()));
+
+        if has_schedule {
             let planned = if d.task.rrule.is_some() {
                 // 循环任务：错过 slot 取最近一次已错过（逾期），否则下一次执行
                 match horae_core::schedule::effective_due(&d.task) {
@@ -110,6 +102,25 @@ impl<'a> App<'a> {
                     Style::default().fg(self.theme.text_dim),
                 ),
                 Span::raw(planned),
+            ]));
+        }
+
+        // 截止时间：仅在明确指定了 due_at 时展示，避免一般录入任务被误导
+        if let Some(due) = d.task.due_at {
+            lines.push(Line::from(vec![
+                Span::styled(
+                    tr!(self.lang, "截止: ", "Due: "),
+                    Style::default().fg(self.theme.text_dim),
+                ),
+                Span::raw(time::format_local(Some(due))),
+            ]));
+        } else if !has_schedule {
+            lines.push(Line::from(vec![
+                Span::styled(
+                    tr!(self.lang, "时间: ", "Time: "),
+                    Style::default().fg(self.theme.text_dim),
+                ),
+                Span::raw("-"),
             ]));
         }
 

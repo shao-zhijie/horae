@@ -1,4 +1,7 @@
+use crate::i18n::Lang;
 use crate::repo::{state::JsonStateStore, tasks};
+use crate::time;
+use crate::tr;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
@@ -28,11 +31,252 @@ fn make_key(kind: &str, id: &str, due: i64) -> String {
     format!("{}:{}:{}", kind, id, due)
 }
 
-#[derive(Debug, Serialize)]
+pub use crate::model::task::TaskTimingKind;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum NotificationEvent {
-    InOneHour { title: String },
-    InTenMins { title: String },
-    Now { id: String, title: String },
+    InOneHour {
+        id: String,
+        title: String,
+        kind: TaskTimingKind,
+        due_ms: i64,
+        priority: Option<String>,
+        tags: Vec<String>,
+    },
+    InTenMins {
+        id: String,
+        title: String,
+        kind: TaskTimingKind,
+        due_ms: i64,
+        priority: Option<String>,
+        tags: Vec<String>,
+    },
+    Now {
+        id: String,
+        title: String,
+        kind: TaskTimingKind,
+        due_ms: i64,
+        is_overdue: bool,
+        priority: Option<String>,
+        tags: Vec<String>,
+    },
+}
+
+impl NotificationEvent {
+    pub fn id(&self) -> &str {
+        match self {
+            Self::InOneHour { id, .. } | Self::InTenMins { id, .. } | Self::Now { id, .. } => id,
+        }
+    }
+
+    pub fn title(&self) -> &str {
+        match self {
+            Self::InOneHour { title, .. }
+            | Self::InTenMins { title, .. }
+            | Self::Now { title, .. } => title,
+        }
+    }
+
+    pub fn kind(&self) -> TaskTimingKind {
+        match self {
+            Self::InOneHour { kind, .. }
+            | Self::InTenMins { kind, .. }
+            | Self::Now { kind, .. } => *kind,
+        }
+    }
+
+    pub fn due_ms(&self) -> i64 {
+        match self {
+            Self::InOneHour { due_ms, .. }
+            | Self::InTenMins { due_ms, .. }
+            | Self::Now { due_ms, .. } => *due_ms,
+        }
+    }
+
+    /// 结构化、逻辑严密的标题，区分截止、计划开始与已逾期，避免误导。
+    pub fn summary(&self, lang: Lang) -> String {
+        match self {
+            Self::InOneHour { kind, .. } => match kind {
+                TaskTimingKind::Deadline => {
+                    tr!(lang, "⏰ 任务即将在 1 小时后截止", "⏰ Task due in 1 hour").into()
+                }
+                TaskTimingKind::ScheduledStart => tr!(
+                    lang,
+                    "📅 任务即将在 1 小时后开始",
+                    "📅 Task starting in 1 hour"
+                )
+                .into(),
+                TaskTimingKind::Recurring => tr!(
+                    lang,
+                    "🔄 循环任务即将在 1 小时后到期",
+                    "🔄 Recurring task due in 1 hour"
+                )
+                .into(),
+            },
+            Self::InTenMins { kind, .. } => match kind {
+                TaskTimingKind::Deadline => tr!(
+                    lang,
+                    "⏰ 任务即将在 10 分钟后截止",
+                    "⏰ Task due in 10 minutes"
+                )
+                .into(),
+                TaskTimingKind::ScheduledStart => tr!(
+                    lang,
+                    "📅 任务即将在 10 分钟后开始",
+                    "📅 Task starting in 10 minutes"
+                )
+                .into(),
+                TaskTimingKind::Recurring => tr!(
+                    lang,
+                    "🔄 循环任务即将在 10 分钟后到期",
+                    "🔄 Recurring task due in 10 minutes"
+                )
+                .into(),
+            },
+            Self::Now {
+                kind, is_overdue, ..
+            } => {
+                if *is_overdue {
+                    match kind {
+                        TaskTimingKind::Deadline => {
+                            tr!(lang, "⚠️ 任务已逾期！", "⚠️ Task is overdue!").into()
+                        }
+                        TaskTimingKind::ScheduledStart => tr!(
+                            lang,
+                            "⏳ 任务已过计划开始时间！",
+                            "⏳ Task scheduled start time passed!"
+                        )
+                        .into(),
+                        TaskTimingKind::Recurring => {
+                            tr!(lang, "⚠️ 循环任务已逾期！", "⚠️ Recurring task is overdue!").into()
+                        }
+                    }
+                } else {
+                    match kind {
+                        TaskTimingKind::Deadline => {
+                            tr!(lang, "⏰ 任务现已到截止时间！", "⏰ Task deadline reached!").into()
+                        }
+                        TaskTimingKind::ScheduledStart => {
+                            tr!(lang, "🚀 任务计划现在开始！", "🚀 Task starts now!").into()
+                        }
+                        TaskTimingKind::Recurring => tr!(
+                            lang,
+                            "🔄 循环任务时间已到！",
+                            "🔄 Recurring task time reached!"
+                        )
+                        .into(),
+                    }
+                }
+            }
+        }
+    }
+
+    /// 包含任务标题、具体时间上下文、相对时间、优先级与标签的完整正文。
+    pub fn body(&self, lang: Lang) -> String {
+        let (title, kind, due_ms, is_overdue, priority, tags) = match self {
+            Self::InOneHour {
+                title,
+                kind,
+                due_ms,
+                priority,
+                tags,
+                ..
+            } => (title, *kind, *due_ms, false, priority, tags),
+            Self::InTenMins {
+                title,
+                kind,
+                due_ms,
+                priority,
+                tags,
+                ..
+            } => (title, *kind, *due_ms, false, priority, tags),
+            Self::Now {
+                title,
+                kind,
+                due_ms,
+                is_overdue,
+                priority,
+                tags,
+                ..
+            } => (title, *kind, *due_ms, *is_overdue, priority, tags),
+        };
+
+        let formatted_time = time::format_local(Some(due_ms));
+        let time_label = match kind {
+            TaskTimingKind::Deadline => tr!(lang, "截止", "Due"),
+            TaskTimingKind::ScheduledStart => tr!(lang, "计划开始", "Start"),
+            TaskTimingKind::Recurring => tr!(lang, "周期发生", "Slot"),
+        };
+
+        let mut lines = vec![title.clone()];
+
+        let mut meta_parts = Vec::new();
+        if is_overdue {
+            if let Some(rel) = time::relative_due(lang, Some(due_ms)) {
+                meta_parts.push(format!("⚠️ {}: {} ({})", time_label, formatted_time, rel));
+            } else {
+                meta_parts.push(format!("⚠️ {}: {}", time_label, formatted_time));
+            }
+        } else {
+            meta_parts.push(format!("⏰ {}: {}", time_label, formatted_time));
+        }
+
+        if let Some(pri) = priority {
+            let pri_str = match pri.as_str() {
+                "high" => tr!(lang, "🔥 高优先级", "🔥 High priority"),
+                "medium" => tr!(lang, "⚡ 中优先级", "⚡ Medium priority"),
+                "low" => tr!(lang, "🌱 低优先级", "🌱 Low priority"),
+                _ => "",
+            };
+            if !pri_str.is_empty() {
+                meta_parts.push(pri_str.to_string());
+            }
+        }
+
+        if !tags.is_empty() {
+            let tags_str = tags
+                .iter()
+                .map(|t| format!("#{}", t))
+                .collect::<Vec<_>>()
+                .join(" ");
+            meta_parts.push(format!("🏷 {}", tags_str));
+        }
+
+        lines.push(meta_parts.join(" | "));
+        lines.join("\n")
+    }
+
+    pub fn urgency(&self) -> &'static str {
+        match self {
+            Self::InOneHour { .. } => "low",
+            Self::InTenMins { .. } => "normal",
+            Self::Now {
+                is_overdue,
+                priority,
+                ..
+            } => {
+                if *is_overdue || priority.as_deref() == Some("high") {
+                    "critical"
+                } else {
+                    "normal"
+                }
+            }
+        }
+    }
+
+    pub fn icon(&self) -> Option<&'static str> {
+        match self {
+            Self::InOneHour { .. } => None,
+            Self::InTenMins { .. } => None,
+            Self::Now { is_overdue, .. } => {
+                if *is_overdue {
+                    Some("dialog-warning")
+                } else {
+                    Some("alarm-clock")
+                }
+            }
+        }
+    }
 }
 
 pub struct NotificationEngine {
@@ -100,6 +344,9 @@ impl NotificationEngine {
             Err(_) => return vec![],
         };
 
+        let ids: Vec<&str> = all.iter().map(|t| t.id.as_str()).collect();
+        let mut tag_map = crate::repo::tags::get_tags_for_tasks(conn, &ids).unwrap_or_default();
+
         let mut dirty = pruned;
 
         for task in all {
@@ -122,25 +369,48 @@ impl NotificationEngine {
                 continue;
             }
 
+            let tags = tag_map.remove(&task.id).unwrap_or_default();
+            let kind = TaskTimingKind::from_task(&task);
+
             if diff_ms > 3_540_000 && diff_ms <= 3_600_000 {
                 let key = make_key("1h", &task.id, due);
                 if self.notified.insert(key) {
                     dirty = true;
-                    events.push(NotificationEvent::InOneHour { title: task.title });
+                    events.push(NotificationEvent::InOneHour {
+                        id: task.id,
+                        title: task.title,
+                        kind,
+                        due_ms: due,
+                        priority: task.priority,
+                        tags,
+                    });
                 }
             } else if diff_ms > 540_000 && diff_ms <= 600_000 {
                 let key = make_key("10m", &task.id, due);
                 if self.notified.insert(key) {
                     dirty = true;
-                    events.push(NotificationEvent::InTenMins { title: task.title });
+                    events.push(NotificationEvent::InTenMins {
+                        id: task.id,
+                        title: task.title,
+                        kind,
+                        due_ms: due,
+                        priority: task.priority,
+                        tags,
+                    });
                 }
             } else if diff_ms <= 0 {
                 let key = make_key("now", &task.id, due);
                 if self.notified.insert(key) {
                     dirty = true;
+                    let is_overdue = diff_ms < -60_000;
                     events.push(NotificationEvent::Now {
                         id: task.id,
                         title: task.title,
+                        kind,
+                        due_ms: due,
+                        is_overdue,
+                        priority: task.priority,
+                        tags,
                     });
                 }
             }
@@ -265,5 +535,67 @@ mod tests {
         engine.last_tick_ms = 0;
         let second = engine.tick(&conn);
         assert!(second.is_empty(), "相同 occurrence 不应重复触发");
+    }
+
+    #[test]
+    fn summary_and_body_distinguish_deadline_and_start() {
+        let deadline_event = NotificationEvent::InOneHour {
+            id: "t1".into(),
+            title: "提交财务报表".into(),
+            kind: TaskTimingKind::Deadline,
+            due_ms: 1_700_000_000_000,
+            priority: Some("high".into()),
+            tags: vec!["work".into(), "finance".into()],
+        };
+        assert_eq!(
+            deadline_event.summary(Lang::Zh),
+            "⏰ 任务即将在 1 小时后截止"
+        );
+        let body = deadline_event.body(Lang::Zh);
+        assert!(body.contains("提交财务报表"));
+        assert!(body.contains("截止:"));
+        assert!(body.contains("🔥 高优先级"));
+        assert!(body.contains("#work #finance"));
+
+        let start_event = NotificationEvent::InOneHour {
+            id: "t2".into(),
+            title: "季度规划会".into(),
+            kind: TaskTimingKind::ScheduledStart,
+            due_ms: 1_700_000_000_000,
+            priority: None,
+            tags: vec![],
+        };
+        assert_eq!(start_event.summary(Lang::Zh), "📅 任务即将在 1 小时后开始");
+        let start_body = start_event.body(Lang::Zh);
+        assert!(start_body.contains("计划开始:"));
+
+        // 逾期任务
+        let overdue_event = NotificationEvent::Now {
+            id: "t3".into(),
+            title: "逾期申报".into(),
+            kind: TaskTimingKind::Deadline,
+            due_ms: 1_700_000_000_000,
+            is_overdue: true,
+            priority: Some("medium".into()),
+            tags: vec![],
+        };
+        assert_eq!(overdue_event.summary(Lang::Zh), "⚠️ 任务已逾期！");
+        assert_eq!(overdue_event.urgency(), "critical");
+        assert_eq!(overdue_event.icon(), Some("dialog-warning"));
+        let overdue_body = overdue_event.body(Lang::Zh);
+        assert!(overdue_body.contains("⚠️ 截止:"));
+        assert!(overdue_body.contains("⚡ 中优先级"));
+
+        // 到期（刚到）任务
+        let now_event = NotificationEvent::Now {
+            id: "t4".into(),
+            title: "准时打卡".into(),
+            kind: TaskTimingKind::Deadline,
+            due_ms: 1_700_000_000_000,
+            is_overdue: false,
+            priority: None,
+            tags: vec![],
+        };
+        assert_eq!(now_event.summary(Lang::Zh), "⏰ 任务现已到截止时间！");
     }
 }

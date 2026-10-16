@@ -1,6 +1,8 @@
+use crate::i18n::Lang;
 use crate::model::{event, pomodoro::Phase, pomodoro::PomoState};
 use crate::repo::{pomodoro, tasks};
 use crate::time;
+use crate::tr;
 use anyhow::Result;
 use rusqlite::Connection;
 use std::process::{Command as StdCommand, Stdio};
@@ -54,13 +56,16 @@ pub fn start(conn: &Connection, task_id: &str) -> Result<()> {
         .stderr(Stdio::null())
         .spawn()?;
 
-    notify(
-        "🎯 专注模式开启",
-        &format!(
-            "开始专注任务: {}\n预计时长: {} 分钟",
-            task.title, state.config.work_mins
-        ),
+    let lang = Lang::detect(Some(conn));
+    let summary = tr!(lang, "🎯 专注模式开启", "🎯 Focus Mode Started");
+    let body = tr!(
+        lang,
+        "开始专注任务: {}\n预计时长: {} 分钟",
+        "Focusing on task: {}\nEstimated duration: {} mins",
+        task.title,
+        state.config.work_mins
     );
+    notify(summary, &body);
     Ok(())
 }
 
@@ -98,7 +103,15 @@ pub fn stop(conn: Option<&rusqlite::Connection>, completed: bool) -> anyhow::Res
     state.cycle = 0;
     state.break_ended_at = None;
     pomodoro::save_state(&state)?;
-    notify("⏹️ 专注已终止", "番茄钟与专注模式已停止");
+    let lang = Lang::detect(conn);
+    notify(
+        tr!(lang, "⏹️ 专注已终止", "⏹️ Focus Stopped"),
+        tr!(
+            lang,
+            "番茄钟与专注模式已停止",
+            "Pomodoro and focus mode have been stopped"
+        ),
+    );
     Ok(())
 }
 
@@ -263,50 +276,80 @@ pub(crate) fn advance_phase(
             state.streak += 1;
             state.last_completed_task_title = state.task_title.clone();
 
-            let current_title = state.task_title.as_deref().unwrap_or("无标题");
+            let lang = Lang::detect(Some(conn));
+            let default_title = tr!(lang, "无标题", "Untitled");
+            let current_title = state.task_title.as_deref().unwrap_or(default_title);
             let total_mins = state.today_count * state.config.work_mins;
+            let hours = (total_mins as f64) / 60.0;
 
             if state.cycle.is_multiple_of(state.config.long_break_interval) {
                 state.phase = Phase::LongBreak;
                 let long_break_ms = (state.config.long_break_mins as i64) * 60 * 1000;
                 state.end_ts = Some(now + long_break_ms);
-                notify(
-                    "🏆 专注成就战报达成！",
-                    &format!(
+                let summary = tr!(lang, "🏆 专注成就战报达成！", "🏆 Focus Milestone Reached!");
+                let body = if lang.is_zh() {
+                    format!(
                         "🎯 任务: {}\n⏱️ 专注: {}m | 🔥 今日第 {} 个番茄 ({:.1}h)\n💪 连击 Streak: {} 连击！建议长休 {} 分钟 ☕",
                         current_title,
                         state.config.work_mins,
                         state.today_count,
-                        (total_mins as f64) / 60.0,
+                        hours,
                         state.streak,
                         state.config.long_break_mins
-                    ),
-                );
+                    )
+                } else {
+                    format!(
+                        "🎯 Task: {}\n⏱️ Focus: {}m | 🔥 #{} pomodoro today ({:.1}h)\n💪 Streak: {}! Time for a {} min long break ☕",
+                        current_title,
+                        state.config.work_mins,
+                        state.today_count,
+                        hours,
+                        state.streak,
+                        state.config.long_break_mins
+                    )
+                };
+                notify(summary, &body);
             } else {
                 state.phase = Phase::ShortBreak;
                 let short_break_ms = (state.config.short_break_mins as i64) * 60 * 1000;
                 state.end_ts = Some(now + short_break_ms);
-                notify(
-                    "🎉 专注成就战报达成！",
-                    &format!(
+                let summary = tr!(lang, "🎉 专注成就战报达成！", "🎉 Focus Completed!");
+                let body = if lang.is_zh() {
+                    format!(
                         "🎯 任务: {}\n⏱️ 专注: {}m | 🔥 今日第 {} 个番茄 ({:.1}h)\n💪 连击 Streak: {} 连击！开启小休 {} 分钟 ☕",
                         current_title,
                         state.config.work_mins,
                         state.today_count,
-                        (total_mins as f64) / 60.0,
+                        hours,
                         state.streak,
                         state.config.short_break_mins
-                    ),
-                );
+                    )
+                } else {
+                    format!(
+                        "🎯 Task: {}\n⏱️ Focus: {}m | 🔥 #{} pomodoro today ({:.1}h)\n💪 Streak: {}! Time for a {} min short break ☕",
+                        current_title,
+                        state.config.work_mins,
+                        state.today_count,
+                        hours,
+                        state.streak,
+                        state.config.short_break_mins
+                    )
+                };
+                notify(summary, &body);
             }
         }
         Phase::ShortBreak | Phase::LongBreak => {
             state.phase = Phase::Idle;
             // 盖章“休息刚结束”：横幅只在此后短窗口内提示，不整天常驻
             state.break_ended_at = Some(now);
+            let lang = Lang::detect(Some(conn));
             notify(
-                "⏰ 休息结束！战报结清",
-                "休息已完成！按 [Space / P] 再接再厉开启新一轮，或按 [S] 结束专注。💪",
+                tr!(lang, "⏰ 休息结束！战报结清", "⏰ Break Ended!"),
+                tr!(
+                    lang,
+                    "休息已完成！按 [Space / P] 再接再厉开启新一轮，或按 [S] 结束专注。💪",
+                    "Break is complete! Press [Space / P] to start next round, or [S] to finish focus. 💪"
+                ),
             );
         }
         Phase::Idle => {}
@@ -315,9 +358,9 @@ pub(crate) fn advance_phase(
 }
 
 pub fn notify(summary: &str, body: &str) {
-    // 桌面图形通知（非阻塞异步启动，避免阻塞计时与渲染）
+    // 桌面图形通知（非阻塞异步启动，避免阻塞计时与渲染，带 -a horae 且不传 -i 避免 28 号日历图标）
     let _ = StdCommand::new("notify-send")
-        .args(["-u", "normal", "-i", "appointment-soon", summary, body])
+        .args(["-a", "horae", "-u", "normal", summary, body])
         .spawn();
 
     // 音效提醒：在独立线程中异步播放，防止音频服务卡顿时阻塞 daemon 计时

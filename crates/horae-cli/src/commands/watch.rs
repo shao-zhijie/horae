@@ -545,9 +545,17 @@ fn write_reminder_file(dir: &Path, t: &Task, due_ms: i64) -> Result<()> {
     if path.exists() {
         return Ok(());
     }
+    let time_label = if t.due_at.is_some() {
+        "截止"
+    } else if t.rrule.is_some() {
+        "周期发生"
+    } else {
+        "计划开始"
+    };
     let content = format!(
-        "# ⏰ 任务提醒\n\n任务：{}\n截止：{}\n状态：{}\nid：{}\n",
+        "# ⏰ 任务提醒\n\n任务：{}\n{}：{}\n状态：{}\nid：{}\n",
         t.title,
+        time_label,
         time::format_local(Some(due_ms)),
         t.status,
         t.id

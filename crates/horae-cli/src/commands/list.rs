@@ -58,7 +58,7 @@ pub fn run(
     table
         .load_preset(comfy_table::presets::NOTHING)
         .set_content_arrangement(comfy_table::ContentArrangement::Dynamic)
-        .set_header(vec!["ID", "STATUS", "DUE", "TAGS", "TITLE"]);
+        .set_header(vec!["ID", "STATUS", "SCHEDULE", "TAGS", "TITLE"]);
 
     for t in &tasks_vec {
         let tags_s = tag_map.get(&t.id).map(|v| v.join(",")).unwrap_or_default();

@@ -168,6 +168,7 @@ impl<'a> App<'a> {
                         total: None,
                         archive_reason: None,
                         checked_in_today: false,
+                        is_deadline: false,
                     });
                 }
             }
@@ -204,6 +205,7 @@ impl<'a> App<'a> {
                         total: None,
                         archive_reason: None,
                         checked_in_today: false,
+                        is_deadline: false,
                     });
                 }
             }

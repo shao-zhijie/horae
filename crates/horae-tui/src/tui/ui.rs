@@ -152,18 +152,29 @@ pub(crate) fn build_list_items(app: &App) -> Vec<ListItem<'static>> {
                     .unwrap_or_default()
             } else if is_checked_in {
                 // 已打卡：重点展示下一次执行时间。
-                time::relative_due(app.lang, r.due)
+                time::relative_schedule(app.lang, r.due, r.is_deadline)
                     .map(|s| tr!(app.lang, "已打卡·下次:{}", "checked in·next:{}", s))
                     .unwrap_or_default()
             } else {
-                time::relative_due(app.lang, r.due)
+                time::relative_schedule(app.lang, r.due, r.is_deadline)
                     .map(|s| format!("~{}", s))
                     .unwrap_or_default()
             };
 
-            let is_overdue =
-                !is_archived && !is_done && !is_checked_in && !is_quote && time::is_overdue(r.due);
+            let is_overdue = !is_archived
+                && !is_done
+                && !is_checked_in
+                && !is_quote
+                && r.is_deadline
+                && time::is_overdue(r.due);
+            let is_past_start = !is_archived
+                && !is_done
+                && !is_checked_in
+                && !is_quote
+                && !r.is_deadline
+                && time::is_overdue(r.due);
             let is_today = !is_overdue
+                && !is_past_start
                 && !is_archived
                 && !is_done
                 && !is_checked_in
@@ -179,7 +190,7 @@ pub(crate) fn build_list_items(app: &App) -> Vec<ListItem<'static>> {
                 app.theme.text_dim
             } else if is_overdue {
                 app.theme.text_urgent
-            } else if is_today {
+            } else if is_past_start || is_today {
                 Color::Rgb(249, 226, 175)
             } else {
                 app.theme.text_dim

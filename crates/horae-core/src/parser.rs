@@ -174,7 +174,7 @@ pub fn parse_quick_add(input: &str) -> QuickAdd {
 }
 
 /// 是否形如裸的 `HH:MM`（1-2 位小时 + 冒号/中文冒号 + 2 位分钟）。
-fn is_hhmm(s: &str) -> bool {
+pub fn is_hhmm(s: &str) -> bool {
     let normalized = s.replace('：', ":");
     let mut parts = normalized.split(':');
     match (parts.next(), parts.next(), parts.next()) {

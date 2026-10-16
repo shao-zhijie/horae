@@ -3,11 +3,13 @@ use serde_json::json;
 use std::process::Command as StdCommand;
 
 use anyhow::Result;
+use horae_core::i18n::Lang;
 use horae_core::model::task::{Status, Task};
 use horae_core::repo::alarm;
 use horae_core::repo::{tags, tasks};
 use horae_core::schedule::effective_due;
 use horae_core::time;
+use horae_core::tr;
 
 /// 提前多少分钟触发闹铃提醒。
 pub const LEAD_MINUTES: i64 = 5;
@@ -71,6 +73,73 @@ fn due_to_ring(tasks: &[Task], rung: &[String], now: i64, lead_ms: i64) -> Vec<(
         .collect()
 }
 
+/// 格式化到点闹铃的提醒信息：严谨区分逾期、现已到期与提前预警，避免误导，且适配中英文。
+pub(crate) fn format_alarm_message(t: &Task, d: i64, now: i64, lang: Lang) -> (String, String) {
+    let is_start = t.due_at.is_none() && t.scheduled_start_at.is_some();
+    let time_str = time::format_local(Some(d));
+
+    if d < now {
+        let overdue_mins = (now - d) / 60_000;
+        if overdue_mins >= 1 {
+            let label = if is_start {
+                tr!(lang, "计划开始", "Start")
+            } else {
+                tr!(lang, "截止", "Due")
+            };
+            let summary = tr!(lang, "⚠️ 任务逾期提醒", "⚠️ Task Overdue Reminder");
+            let body = tr!(
+                lang,
+                "已逾期 {} 分钟:\n{}\n{}: {}",
+                "Overdue by {} mins:\n{}\n{}: {}",
+                overdue_mins,
+                t.title,
+                label,
+                time_str
+            );
+            (summary.to_string(), body)
+        } else {
+            let label = if is_start {
+                tr!(lang, "计划开始时间已到", "Scheduled start time reached")
+            } else {
+                tr!(lang, "截止时间已到", "Deadline reached")
+            };
+            let summary = tr!(lang, "⏰ 任务到点提醒", "⏰ Task Due Reminder");
+            let body = format!(
+                "{}:\n{}\n{}: {}",
+                label,
+                t.title,
+                tr!(lang, "时间", "Time"),
+                time_str
+            );
+            (summary.to_string(), body)
+        }
+    } else {
+        let mins_left = ((d - now + 59_999) / 60_000).max(1);
+        let action = if is_start {
+            tr!(lang, "开始", "starting")
+        } else {
+            tr!(lang, "截止", "due")
+        };
+        let label = if is_start {
+            tr!(lang, "计划开始", "Start")
+        } else {
+            tr!(lang, "截止", "Due")
+        };
+        let summary = tr!(lang, "⏰ 任务提醒", "⏰ Task Reminder");
+        let body = tr!(
+            lang,
+            "{} 分钟后{}:\n{}\n{}: {}",
+            "In {} mins ({}):\n{}\n{}: {}",
+            mins_left,
+            action,
+            t.title,
+            label,
+            time_str
+        );
+        (summary.to_string(), body)
+    }
+}
+
 /// Waybar 多闹铃模块: 每个 slot 输出单个 JSON 对象。waybar v0.15 的 custom
 /// json 只支持单对象（数组会报 requires objectValue）, 因此用两个模块
 /// `horae alarm waybar 1` / `horae alarm waybar 2` 各渲染一个闹铃。
@@ -94,6 +163,7 @@ pub fn waybar(slot: Option<usize>, limit: Option<usize>, emit_all: bool) -> Resu
     let now = time::now_ms();
     let lead_ms = LEAD_MINUTES * 60 * 1000;
     let mut state = alarm::get_state().unwrap_or_default();
+    let lang = Lang::detect(Some(&conn));
 
     let win = window(&all, &state.skipped, limit);
     let win_keys = window_keys(&win);
@@ -105,14 +175,8 @@ pub fn waybar(slot: Option<usize>, limit: Option<usize>, emit_all: bool) -> Resu
         for (id, d) in due_to_ring(&all, &state.rung, now, lead_ms) {
             if let Ok(t) = tasks::get(&conn, &id) {
                 state.rung.push(occ_key(&id, d));
-                crate::commands::pomo::notify(
-                    "⏰ 任务提醒",
-                    &format!(
-                        "5 分钟后要做:\n{}\n截止: {}",
-                        t.title,
-                        time::format_local(Some(d))
-                    ),
-                );
+                let (summary, body) = format_alarm_message(&t, d, now, lang);
+                crate::commands::pomo::notify(&summary, &body);
                 dirty = true;
             }
         }
@@ -143,7 +207,7 @@ pub fn waybar(slot: Option<usize>, limit: Option<usize>, emit_all: bool) -> Resu
     if emit_all {
         let items: Vec<serde_json::Value> = win
             .iter()
-            .map(|(id, d)| alarm_item(&conn, id, *d, now, lead_ms))
+            .map(|(id, d)| alarm_item(&conn, id, *d, now, lead_ms, lang))
             .collect::<Result<Vec<_>>>()?;
         println!("{}", serde_json::to_string(&items)?);
         return Ok(());
@@ -151,7 +215,7 @@ pub fn waybar(slot: Option<usize>, limit: Option<usize>, emit_all: bool) -> Resu
 
     let item = win
         .get(slot - 1)
-        .map(|(id, d)| alarm_item(&conn, id, *d, now, lead_ms))
+        .map(|(id, d)| alarm_item(&conn, id, *d, now, lead_ms, lang))
         .transpose()?
         .unwrap_or_else(empty_item);
     println!("{}", serde_json::to_string(&item)?);
@@ -197,6 +261,7 @@ fn alarm_item(
     due_ms: i64,
     now: i64,
     lead_ms: i64,
+    lang: Lang,
 ) -> Result<serde_json::Value> {
     let t = tasks::get(conn, id)?;
     let (class, marker) = if due_ms < now {
@@ -224,20 +289,35 @@ fn alarm_item(
         tags_s.as_str()
     };
 
+    let is_start = t.due_at.is_none() && t.scheduled_start_at.is_some();
+    let time_label = if is_start {
+        tr!(lang, "计划开始", "Start")
+    } else {
+        tr!(lang, "截止", "Due")
+    };
+    let time_type = if is_start { "start" } else { "due" };
+
     Ok(json!({
         "text": format!("{} {} {}", marker, compact_time(due_ms), title),
         "alt": class,
         "class": class,
         "tooltip": format!(
-            "{}\n状态: {}\n截止: {}\n标签: {}",
+            "{}\n{}: {}\n{}: {}\n{}: {}",
             t.title,
+            tr!(lang, "状态", "Status"),
             t.status,
+            time_label,
             time::format_local(Some(due_ms)),
+            tr!(lang, "标签", "Tags"),
             tags_s
         ),
         "id": t.id,
         "title": t.title,
         "due": due_ms,
+        "due_at": t.due_at,
+        "scheduled_start_at": t.scheduled_start_at,
+        "time_type": time_type,
+        "is_start": is_start,
         "status": format!("{}", t.status),
         "tags": tags_s,
     }))
@@ -366,13 +446,39 @@ mod tests {
         )
         .unwrap();
         let due = 1_750_000_000_000;
-        let item = alarm_item(&conn, &t.id, due, 1_800_000_000_000, 300_000).unwrap();
+        let item = alarm_item(&conn, &t.id, due, 1_800_000_000_000, 300_000, Lang::Zh).unwrap();
         assert_eq!(item["id"], t.id);
         assert_eq!(item["title"], "提交周报");
         assert_eq!(item["due"], due);
         assert_eq!(item["status"], "inbox");
         assert_eq!(item["class"], CLASS_OVERDUE);
         assert!(item["tags"].is_string());
+
+        // 计划开始任务
+        let t_sched = horae_core::repo::tasks::create_capture(
+            &conn,
+            &horae_core::repo::tasks::CaptureInput {
+                title: "晨会".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        horae_core::repo::tasks::schedule(&conn, &t_sched.id, due, None, None).unwrap();
+        let item_sched = alarm_item(
+            &conn,
+            &t_sched.id,
+            due,
+            1_800_000_000_000,
+            300_000,
+            Lang::Zh,
+        )
+        .unwrap();
+        assert_eq!(item_sched["is_start"], true);
+        assert_eq!(item_sched["time_type"], "start");
+        assert!(item_sched["tooltip"]
+            .as_str()
+            .unwrap()
+            .contains("计划开始:"));
     }
 
     #[test]
@@ -397,5 +503,37 @@ mod tests {
         let tasks = vec![mk_task("a", Status::Next, Some(now))];
         let rung = vec![occ_key("a", now)];
         assert!(due_to_ring(&tasks, &rung, now, lead_ms).is_empty());
+    }
+
+    #[test]
+    fn format_alarm_message_distinguishes_overdue_and_upcoming() {
+        let now = 1_000_000_000_000;
+        let mut t = mk_task("提交周报", Status::Next, Some(now - 120_000));
+        t.due_at = Some(now - 120_000);
+        let (summary, body) = format_alarm_message(&t, now - 120_000, now, Lang::Zh);
+        assert_eq!(summary, "⚠️ 任务逾期提醒");
+        assert!(body.contains("已逾期 2 分钟"));
+        assert!(body.contains("提交周报"));
+        assert!(body.contains("截止:"));
+
+        let (summary_en, body_en) = format_alarm_message(&t, now - 120_000, now, Lang::En);
+        assert_eq!(summary_en, "⚠️ Task Overdue Reminder");
+        assert!(body_en.contains("Overdue by 2 mins"));
+
+        let (summary2, body2) = format_alarm_message(&t, now + 180_000, now, Lang::Zh);
+        assert_eq!(summary2, "⏰ 任务提醒");
+        assert!(body2.contains("3 分钟后截止"));
+
+        // 计划开始任务
+        t.due_at = None;
+        t.scheduled_start_at = Some(now + 60_000);
+        let (summary3, body3) = format_alarm_message(&t, now + 60_000, now, Lang::Zh);
+        assert_eq!(summary3, "⏰ 任务提醒");
+        assert!(body3.contains("1 分钟后开始"));
+        assert!(body3.contains("计划开始:"));
+
+        let (summary3_en, body3_en) = format_alarm_message(&t, now + 60_000, now, Lang::En);
+        assert_eq!(summary3_en, "⏰ Task Reminder");
+        assert!(body3_en.contains("In 1 mins (starting)"));
     }
 }

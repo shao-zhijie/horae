@@ -111,7 +111,17 @@ pub fn build_request(cfg: &NtfyConfig, task: &Task, tag_names: &[String]) -> Opt
     } else {
         format!("\n🏷 {}", tag_names.join(" "))
     };
-    let body = format!("{}{}\n⏰ {}\n#{}", task.title, tags_line, when, id8);
+    let time_label = if task.rrule.is_some() {
+        "周期发生"
+    } else if task.due_at.is_some() {
+        "截止"
+    } else {
+        "计划开始"
+    };
+    let body = format!(
+        "{}{}\n⏰ {}: {}\n#{}",
+        task.title, tags_line, time_label, when, id8
+    );
     let token = cfg.token_env.as_ref().and_then(|e| std::env::var(e).ok());
     Some(NtfyRequest {
         url: format!("{}/{}", cfg.url.trim_end_matches('/'), cfg.topic),

@@ -386,7 +386,7 @@ impl<'a> App<'a> {
     }
 
     /// 快速录入实时解析预览（标题 / 标签 / 时间 / 循环 / 优先级）。
-    fn capture_preview_lines(&self) -> Vec<Line<'static>> {
+    pub(crate) fn capture_preview_lines(&self) -> Vec<Line<'static>> {
         let parsed = parse_quick_add(&self.input);
         let tokens = tokenize_quick_add(&self.input);
         let mut text_lines: Vec<Line> = Vec::new();
@@ -417,13 +417,28 @@ impl<'a> App<'a> {
             }
             text_lines.push(Line::from(spans));
         }
+        let rrule_raw = tokens
+            .iter()
+            .rev()
+            .find(|t| t.kind == QuickAddKind::Rrule)
+            .map(|t| horae_core::parser::strip_token_prefix(&t.text).to_string());
+        let valid_rrule = rrule_raw
+            .as_ref()
+            .filter(|raw| horae_core::parser::rrule_valid(raw));
+
         if let Some(ref ts) = parsed.time_str {
             let parsed_ms = time::parse_time(ts);
+            let is_pure_time = horae_core::parser::is_hhmm(ts.trim());
             let (resolved_text, resolved_style) = match &parsed_ms {
-                Ok(ms) => (
-                    time::format_local(Some(*ms)),
-                    Style::default().fg(self.theme.text_dim),
-                ),
+                Ok(ms) => {
+                    let text = if valid_rrule.is_some() && is_pure_time {
+                        let clean_ts = ts.trim().replace('：', ":");
+                        tr!(self.lang, "每期 {}", "at {}", clean_ts)
+                    } else {
+                        time::format_local(Some(*ms))
+                    };
+                    (text, Style::default().fg(self.theme.text_dim))
+                }
                 Err(_) => (
                     tr!(self.lang, "[无效]", "[invalid]").to_string(),
                     Style::default().fg(self.theme.text_urgent),
@@ -446,16 +461,41 @@ impl<'a> App<'a> {
                 Span::styled(resolved_text, resolved_style),
             ]));
         }
-        if let Some(raw) = tokens
-            .iter()
-            .rev()
-            .find(|t| t.kind == QuickAddKind::Rrule)
-            .map(|t| horae_core::parser::strip_token_prefix(&t.text).to_string())
-        {
+        if let Some(raw) = rrule_raw {
             let valid = horae_core::parser::rrule_valid(&raw);
             let resolved = horae_core::parser::rrule_friendly_desc(&raw, self.lang);
             let (resolved_text, resolved_style) = if valid {
-                (resolved, Style::default().fg(self.theme.text_dim))
+                let first_due_suffix = if let Some(ref ts) = parsed.time_str {
+                    if let Ok(anchor_ms) = time::parse_time(ts) {
+                        let now_ms = time::now_ms();
+                        let rrule_rfc = horae_core::parser::parse_rrule_shorthand(&raw);
+                        horae_core::schedule::occurrences_since(&rrule_rfc, anchor_ms, now_ms)
+                            .ok()
+                            .and_then(|occ| {
+                                occ.iter()
+                                    .find(|m| **m >= now_ms)
+                                    .copied()
+                                    .or_else(|| occ.first().copied())
+                            })
+                            .map(|first_ms| {
+                                tr!(
+                                    self.lang,
+                                    " (首期: {})",
+                                    " (first: {})",
+                                    time::format_local(Some(first_ms))
+                                )
+                            })
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                };
+                (
+                    format!("{}{}", resolved, first_due_suffix),
+                    Style::default().fg(self.theme.text_dim),
+                )
             } else {
                 (
                     tr!(self.lang, "[无效循环]", "[invalid rrule]").to_string(),

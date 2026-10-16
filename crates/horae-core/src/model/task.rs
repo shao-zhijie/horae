@@ -86,3 +86,40 @@ pub struct Task {
     pub delegated_to: Option<String>,
     pub checklist: Vec<ChecklistItem>,
 }
+
+/// 任务时间语义类型（截止时间 vs 计划开始时间 vs 循环周期）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TaskTimingKind {
+    /// 截止时间（Deadline）
+    Deadline,
+    /// 计划开始时间（Scheduled start）
+    ScheduledStart,
+    /// 循环任务（Recurring task）
+    Recurring,
+}
+
+impl TaskTimingKind {
+    pub fn from_task(task: &Task) -> Self {
+        task.timing_kind()
+    }
+}
+
+impl Task {
+    pub fn timing_kind(&self) -> TaskTimingKind {
+        if self.rrule.is_some() {
+            TaskTimingKind::Recurring
+        } else if self.due_at.is_some() {
+            TaskTimingKind::Deadline
+        } else {
+            TaskTimingKind::ScheduledStart
+        }
+    }
+
+    pub fn is_scheduled_start(&self) -> bool {
+        self.timing_kind() == TaskTimingKind::ScheduledStart
+    }
+
+    pub fn is_deadline(&self) -> bool {
+        self.timing_kind() == TaskTimingKind::Deadline
+    }
+}

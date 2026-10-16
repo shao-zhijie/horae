@@ -228,6 +228,8 @@ pub(crate) struct Row {
     pub(crate) archive_reason: Option<String>,
     /// 循环任务今日是否已打卡（存在今日的 habit_completed 事件）。
     pub(crate) checked_in_today: bool,
+    /// 是否为真正的截止时间（如带有 --due）
+    pub(crate) is_deadline: bool,
 }
 
 pub(crate) struct DetailData {
@@ -488,19 +490,13 @@ impl<'a> App<'a> {
 
         let events = self.notification_engine.tick(self.conn);
         for event in events {
-            match event {
-                // Bug5 修复：InOneHour/InTenMins 只有 title 一个字段，去掉多余的 ..
-                horae_core::notification::NotificationEvent::InOneHour { title } => {
-                    horae_core::notify::desktop("任务即将在1小时后开始", &title);
-                }
-                horae_core::notification::NotificationEvent::InTenMins { title } => {
-                    horae_core::notify::desktop("任务即将在10分钟后开始", &title);
-                }
-                horae_core::notification::NotificationEvent::Now { id, title } => {
-                    horae_core::notify::desktop("任务现在开始!", &title);
-                    self.popup = Some(Popup::TaskDueNow(id, title));
-                    self.needs_clear = true; // force redraw to show popup
-                }
+            let summary = event.summary(self.lang);
+            let body = event.body(self.lang);
+            horae_core::notify::desktop_notify(&summary, &body, event.urgency(), event.icon());
+
+            if let horae_core::notification::NotificationEvent::Now { id, title, .. } = event {
+                self.popup = Some(Popup::TaskDueNow(id, title));
+                self.needs_clear = true; // force redraw to show popup
             }
         }
     }

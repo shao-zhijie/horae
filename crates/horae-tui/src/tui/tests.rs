@@ -5036,3 +5036,82 @@ fn test_detail_git_timeline_ascii_fallback() {
         rendered_text
     );
 }
+
+#[test]
+fn capture_preview_recurring_with_time_shows_cycle_and_first_due() {
+    horae_core::repo::state::set_test_override();
+    let mut conn = Connection::open(":memory:").unwrap();
+    migrate::run(&mut conn).unwrap();
+    let mut app = app_normal(&conn);
+
+    // 1. 纯单次任务：纯时刻展示具体日期时刻（今天或明天）
+    app.input = "买牛奶 ~12:00".to_string();
+    let lines = app.capture_preview_lines();
+    let rendered = lines
+        .iter()
+        .map(|l| {
+            l.spans
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(rendered.contains("时间: ~12:00 → "));
+    assert!(!rendered.contains("每期 12:00"));
+
+    // 2. 周期任务 + 纯时刻：时间行展示为「每期 12:00」，循环行展示「(首期: ...)」
+    app.input = "买牛奶 *m[2,3] ~12:00".to_string();
+    let lines = app.capture_preview_lines();
+    let rendered = lines
+        .iter()
+        .map(|l| {
+            l.spans
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        rendered.contains("时间: ~12:00 → 每期 12:00"),
+        "时间行应消除伪日期并显示每期时刻: {}",
+        rendered
+    );
+    assert!(
+        rendered.contains(" (首期: ") && rendered.contains("12:00)"),
+        "循环行应附带首期发生时间: {}",
+        rendered
+    );
+
+    // 3. 先输入时间后输入周期：结果与顺序无关
+    app.input = "买牛奶 ~12:00 *m[2,3]".to_string();
+    let lines_rev = app.capture_preview_lines();
+    let rendered_rev = lines_rev
+        .iter()
+        .map(|l| {
+            l.spans
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(rendered, rendered_rev, "录入顺序不影响解析预览结果");
+
+    // 4. 周期任务无时间：循环行不附带具体的首期时刻后缀
+    app.input = "买牛奶 *m[2,3]".to_string();
+    let lines_notime = app.capture_preview_lines();
+    let rendered_notime = lines_notime
+        .iter()
+        .map(|l| {
+            l.spans
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(rendered_notime.contains("循环: *m[2,3] → "));
+    assert!(!rendered_notime.contains("(首期: "));
+}

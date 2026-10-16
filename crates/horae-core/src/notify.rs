@@ -1,17 +1,29 @@
-use rusqlite::Connection;
-
+use crate::i18n::Lang;
 use crate::model::task::Status;
 use crate::repo::{notify, tasks};
 use crate::schedule::effective_due;
 use crate::time;
+use crate::tr;
 use anyhow::Result;
 use chrono::{Duration, NaiveDate};
+use rusqlite::Connection;
 
-/// 桌面通知：直接非阻塞启动 `notify-send`（与 pomo.rs 一致），避免阻塞调用线程。
+/// 桌面通知：直接非阻塞启动 `notify-send`（带 app-name 与自适应级别），避免阻塞调用线程。
+/// 缺省不传 `-i` 图标，去除如 28 号等易产生误导的日历图标。
 pub fn desktop(summary: &str, body: &str) {
-    let _ = std::process::Command::new("notify-send")
-        .args(["-u", "normal", "-i", "appointment-soon", summary, body])
-        .spawn();
+    desktop_notify(summary, body, "normal", None);
+}
+
+/// 支持指定紧迫度（low / normal / critical）与可选图标的桌面通知。
+/// 当 icon 为 None 时不向 notify-send 传递 `-i` 参数，彻底去除不必要的日历（如28号）图标。
+pub fn desktop_notify(summary: &str, body: &str, urgency: &str, icon: Option<&str>) {
+    let mut cmd = std::process::Command::new("notify-send");
+    cmd.args(["-a", "horae", "-u", urgency]);
+    if let Some(ic) = icon {
+        cmd.args(["-i", ic]);
+    }
+    cmd.args([summary, body]);
+    let _ = cmd.spawn();
 }
 
 /// 收件箱/等待超期的默认阈值天数。
@@ -44,12 +56,24 @@ pub fn collect(conn: &Connection, now: i64, days: i64) -> Result<DailyDigest> {
     // 逾期：利用联合索引预筛选 (due_at < now OR scheduled_start_at < now OR rrule IS NOT NULL)
     // 避免加载全表任务，再由 effective_due 精确确认早于 now。
     let candidates = tasks::list_overdue_candidates(conn, now)?;
-    let mut overdue: Vec<(String, String)> = candidates
+    let mut overdue_items: Vec<(String, String, i64)> = candidates
         .into_iter()
-        .filter(|t| t.status != Status::Done && effective_due(t).is_some_and(|x| x < now))
-        .map(|t| (t.id, t.title))
+        .filter(|t| t.status != Status::Done)
+        .filter_map(|t| {
+            let due = effective_due(&t)?;
+            if due < now {
+                Some((t.id, t.title, due))
+            } else {
+                None
+            }
+        })
         .collect();
-    overdue.sort_by(|a, b| a.1.cmp(&b.1));
+    // 按逾期时间最久（due 最小，越早越紧急）优先展示，相同则按标题排序
+    overdue_items.sort_by(|a, b| a.2.cmp(&b.2).then_with(|| a.1.cmp(&b.1)));
+    let overdue: Vec<(String, String)> = overdue_items
+        .into_iter()
+        .map(|(id, title, _)| (id, title))
+        .collect();
 
     Ok(DailyDigest {
         inbox: tasks::list_stale_inbox(conn, cutoff)?,
@@ -64,6 +88,7 @@ pub fn check(conn: &Connection) -> Result<()> {
     let key = format!("digest:{}", today);
     let mut state = notify::get_state()?;
     let mut dirty = false;
+    let lang = Lang::detect(Some(conn));
 
     // 1. 农历节气与重大节日提醒
     let lunar_enabled = !matches!(
@@ -80,7 +105,12 @@ pub fn check(conn: &Connection) -> Result<()> {
             for w in &cal.warnings {
                 let warn_key = format!("lunar_warn_{}d:{}:{}", w.days_left, w.holiday_name, today);
                 if !state.sent.contains(&warn_key) {
-                    crate::pomo::notify(&format!("🔔 节日预告 · {}", w.holiday_name), &w.message());
+                    desktop_notify(
+                        &format!("🔔 节日预告 · {}", w.holiday_name),
+                        &w.message(),
+                        "normal",
+                        None,
+                    );
                     state.sent.push(warn_key);
                     dirty = true;
                 }
@@ -90,9 +120,11 @@ pub fn check(conn: &Connection) -> Result<()> {
             if let Some(term) = cal.solar_term {
                 let term_key = format!("lunar_term:{}:{}", term.name(), today);
                 if !state.sent.contains(&term_key) {
-                    crate::pomo::notify(
+                    desktop_notify(
                         &format!("🌿 今日节气 · {}", term.name()),
                         &format!("{} · 时令物候：{}", cal.lunar.short_format(), term.desc()),
+                        "low",
+                        None,
                     );
                     state.sent.push(term_key);
                     dirty = true;
@@ -108,9 +140,11 @@ pub fn check(conn: &Connection) -> Result<()> {
                     } else {
                         format!("🎋 今日节日 · {}", h.name)
                     };
-                    crate::pomo::notify(
+                    desktop_notify(
                         &title,
                         &format!("{} · {}", cal.lunar.short_format(), h.hint),
+                        "normal",
+                        None,
                     );
                     state.sent.push(fest_key);
                     dirty = true;
@@ -123,8 +157,8 @@ pub fn check(conn: &Connection) -> Result<()> {
     if !state.sent.contains(&key) {
         let digest = collect(conn, time::now_ms(), STALE_DAYS)?;
         if digest.has_any() {
-            let (summary, body) = render(&digest);
-            crate::pomo::notify(&summary, &body);
+            let (summary, body) = render(&digest, lang);
+            desktop_notify(&summary, &body, "normal", None);
             state.sent.push(key);
             dirty = true;
         }
@@ -137,63 +171,83 @@ pub fn check(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// 完成动作后的即时反馈：通知今日已完成任务数。
+/// 完成动作后的即时反馈：通知今日已完成任务数（适配中英文并去除28号等日历图标）。
 pub fn completed_feedback(conn: &Connection) -> Result<()> {
     let today_start = crate::time::local_day_bounds(0).0;
     let n = tasks::count_completed_since(conn, today_start)?;
     if n == 0 {
         return Ok(());
     }
-    crate::pomo::notify(
-        "🎉 今日已完成",
-        &format!("今天完成了 {} 项任务，继续保持！", n),
+    let lang = Lang::detect(Some(conn));
+    let summary = tr!(lang, "🎉 今日已完成", "🎉 Completed Today");
+    let body = tr!(
+        lang,
+        "今天完成了 {} 项任务，继续保持！",
+        "Completed {} task(s) today, keep it up!",
+        n
     );
+    desktop_notify(summary, &body, "low", None);
     Ok(())
 }
 
-fn render(d: &DailyDigest) -> (String, String) {
+fn render(d: &DailyDigest, lang: Lang) -> (String, String) {
     let mut total = 0;
     let mut lines = Vec::new();
     if !d.inbox.is_empty() {
         total += d.inbox.len();
-        lines.push(format!(
+        lines.push(tr!(
+            lang,
             "📥 收件箱 {} 项滞留超 {} 天：{}",
+            "📥 Inbox: {} item(s) stale > {} days: {}",
             d.inbox.len(),
             STALE_DAYS,
-            titles(&d.inbox)
+            titles(&d.inbox, lang)
         ));
     }
     if !d.overdue.is_empty() {
         total += d.overdue.len();
-        lines.push(format!(
+        lines.push(tr!(
+            lang,
             "⏰ 逾期未完成 {} 项：{}",
+            "⏰ Overdue: {} item(s): {}",
             d.overdue.len(),
-            titles(&d.overdue)
+            titles(&d.overdue, lang)
         ));
     }
     if !d.waiting.is_empty() {
         total += d.waiting.len();
-        lines.push(format!(
+        lines.push(tr!(
+            lang,
             "⏳ 等待超 {} 天 {} 项：{}",
+            "⏳ Waiting > {} days: {} item(s): {}",
             STALE_DAYS,
             d.waiting.len(),
-            titles(&d.waiting)
+            titles(&d.waiting, lang)
         ));
     }
-    (
-        format!("🧭 GTD 心智维护：{} 项待处理", total),
-        lines.join("\n"),
-    )
+    let summary = tr!(
+        lang,
+        "🧭 GTD 心智维护：{} 项待处理",
+        "🧭 GTD Maintenance: {} item(s) to process",
+        total
+    );
+    (summary, lines.join("\n"))
 }
 
-fn titles(items: &[(String, String)]) -> String {
+fn titles(items: &[(String, String)], lang: Lang) -> String {
     let shown: Vec<String> = items
         .iter()
         .take(MAX_TITLES)
         .map(|(_, title)| format!("\"{}\"", title))
         .collect();
     if items.len() > MAX_TITLES {
-        format!("{} 等{}项", shown.join("、"), items.len())
+        tr!(
+            lang,
+            "{} 等{}项",
+            "{} and {} more",
+            shown.join("、"),
+            items.len()
+        )
     } else {
         shown.join("、")
     }
@@ -289,11 +343,17 @@ mod tests {
             overdue: vec![("b".into(), "交电费".into()), ("c".into(), "体检".into())],
             waiting: vec![],
         };
-        let (summary, body) = render(&d);
+        let (summary, body) = render(&d, Lang::Zh);
         assert_eq!(summary, "🧭 GTD 心智维护：3 项待处理");
         assert!(body.contains("收件箱 1 项滞留超 7 天"));
         assert!(body.contains("\"买牛奶\""));
         assert!(body.contains("逾期未完成 2 项"));
+
+        // 英文渲染测试
+        let (summary_en, body_en) = render(&d, Lang::En);
+        assert_eq!(summary_en, "🧭 GTD Maintenance: 3 item(s) to process");
+        assert!(body_en.contains("Inbox: 1 item(s)"));
+        assert!(body_en.contains("Overdue: 2 item(s)"));
     }
 
     #[test]
@@ -301,10 +361,13 @@ mod tests {
         let items: Vec<(String, String)> = (0..5)
             .map(|i| (format!("id{i}"), format!("任务{i}")))
             .collect();
-        let s = titles(&items);
+        let s = titles(&items, Lang::Zh);
         assert!(s.contains("\"任务0\""));
         assert!(!s.contains("\"任务4\""));
         assert!(s.contains("等5项"));
+
+        let s_en = titles(&items, Lang::En);
+        assert!(s_en.contains("and 5 more"));
     }
 
     #[test]
