@@ -265,7 +265,13 @@ impl FeishuSyncEngineImpl {
                 Some(g) => g,
                 None => continue,
             };
-            let summary = rt["summary"].as_str().unwrap_or("飞书任务").trim();
+            let raw_summary = rt["summary"].as_str().unwrap_or("飞书任务").trim();
+            let sanitized = sanitize_summary(raw_summary);
+            let summary = if sanitized.is_empty() {
+                "飞书任务"
+            } else {
+                &sanitized
+            };
             let completed_at_str = rt["completed_at"].as_str().unwrap_or("0");
             let is_remote_completed = completed_at_str != "0" && !completed_at_str.is_empty();
 
@@ -311,10 +317,43 @@ impl FeishuSyncEngineImpl {
     }
 }
 
+/// 去除飞书任务标题中的 HTML/富文本标签（如 <img ...> 等），防止桌面端富文本渲染引发安全风险
+pub fn sanitize_summary(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut in_tag = false;
+    for ch in s.chars() {
+        if ch == '<' {
+            in_tag = true;
+        } else if ch == '>' {
+            in_tag = false;
+        } else if !in_tag {
+            out.push(ch);
+        }
+    }
+    out.trim().to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::testutil::test_conn;
+
+    #[test]
+    fn test_sanitize_summary_strips_html_and_img() {
+        assert_eq!(
+            sanitize_summary("<img src=\"https://attacker.example.com/leak.png\">买牛奶"),
+            "买牛奶"
+        );
+        assert_eq!(
+            sanitize_summary("召开会议<script>alert(1)</script> !high"),
+            "召开会议alert(1) !high"
+        );
+        assert_eq!(
+            sanitize_summary("<div class=\"task\"><b>重要任务</b></div>"),
+            "重要任务"
+        );
+        assert_eq!(sanitize_summary("普通任务"), "普通任务");
+    }
 
     #[test]
     fn test_task_link_upsert_and_query() {
