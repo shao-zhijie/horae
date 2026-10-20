@@ -306,7 +306,7 @@ CLI `capture`、`modify`、TUI 输入条、手机同步文件与飞书消息共�
 | `horae profile <list\|new\|rename\|rm\|set-default>` | | 管理数据集 |
 | `horae completions <shell>` | | 生成 shell 补全脚本 |
 
-两个全局参数在任何子命令上都可用：`--profile <名称>` 选择数据集，`--lang zh`（或环境变量 `HORAE_LANG=zh`）让 `--help` 输出中文。
+全局参数在任何子命令上都可用：`--profile <名称>` 选择数据集，`--lang zh`（或环境变量 `HORAE_LANG=zh`）让 `--help` 输出中文，`--theme <主题>`（或环境变量 `HORAE_THEME=<主题>`）指定界面主题（`catppuccin`、`latte`、`tokyo-night`、`gruvbox`、`retro-82` 或 `auto`）。
 
 ## TUI 界面
 

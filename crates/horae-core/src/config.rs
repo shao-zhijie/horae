@@ -181,6 +181,11 @@ fn default_profile_name() -> String {
     DEFAULT_PROFILE.to_string()
 }
 
+/// User home directory resolution.
+pub fn home_dir() -> Option<PathBuf> {
+    dirs::home_dir()
+}
+
 /// horae config dir: `~/.config/horae` (falls back to `.` when no config dir).
 /// `HORAE_CONFIG_DIR` env overrides it (used by tests / power users).
 pub fn config_dir() -> PathBuf {

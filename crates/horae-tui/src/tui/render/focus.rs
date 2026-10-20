@@ -53,14 +53,10 @@ impl<'a> App<'a> {
         let secs = diff_secs % 60;
         let time_str = format!("{:02}:{:02}", mins, secs);
 
-        // ── 2. 阶段与主题配色（遵循 Catppuccin 调性） ──
+        // ── 2. 阶段与主题配色（遵循当前主题调性） ──
         let (phase_badge, ring_color, dim_color, bg_color) = match &pomo.phase {
             Phase::Work => {
-                let color = if self.theme.is_dark {
-                    Color::Rgb(243, 139, 168) // Red
-                } else {
-                    Color::Rgb(210, 15, 57)
-                };
+                let color = self.theme.text_urgent;
                 (
                     tr!(self.lang, "🍅 专注中", "🍅 Focus"),
                     color,
@@ -69,11 +65,7 @@ impl<'a> App<'a> {
                 )
             }
             Phase::ShortBreak => {
-                let color = if self.theme.is_dark {
-                    Color::Rgb(166, 227, 161) // Green
-                } else {
-                    Color::Rgb(64, 160, 43)
-                };
+                let color = self.theme.text_success;
                 (
                     tr!(self.lang, "☕ 小休时间", "☕ Short break"),
                     color,
@@ -82,11 +74,7 @@ impl<'a> App<'a> {
                 )
             }
             Phase::LongBreak => {
-                let color = if self.theme.is_dark {
-                    Color::Rgb(148, 226, 213) // Teal
-                } else {
-                    Color::Rgb(23, 146, 153)
-                };
+                let color = self.theme.status_reference;
                 (
                     tr!(self.lang, "🌿 长休放松", "🌿 Long break"),
                     color,

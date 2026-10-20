@@ -306,7 +306,7 @@ Only `DAILY`, `WEEKLY`, `MONTHLY` and `YEARLY` are supported, and every write pa
 | `horae profile <list\|new\|rename\|rm\|set-default>` | | manage data sets |
 | `horae completions <shell>` | | generate shell completions |
 
-Two global flags apply everywhere: `--profile <name>` selects the data set, and `--lang zh` (or `HORAE_LANG=zh`) prints help in Chinese.
+Global flags apply everywhere: `--profile <name>` selects the data set, `--lang zh` (or `HORAE_LANG=zh`) prints help in Chinese, and `--theme <name>` (or `HORAE_THEME=<name>`) sets the UI theme (`catppuccin`, `latte`, `tokyo-night`, `gruvbox`, `retro-82`, or `auto`).
 
 ## TUI
 

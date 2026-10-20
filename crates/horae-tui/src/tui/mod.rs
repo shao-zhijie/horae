@@ -186,6 +186,7 @@ fn run_app(
         }
         app.check_notifications();
         app.refresh_pomo();
+        app.check_omarchy_theme_sync();
         terminal.draw(|f| app.render(f))?;
         if event::poll(Duration::from_millis(100))? {
             match event::read()? {

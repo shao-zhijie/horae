@@ -30,7 +30,7 @@ impl<'a> App<'a> {
                     let val = horae_core::parser::strip_token_prefix(&tok.text);
                     let p = priority_value(val).unwrap_or("");
                     Style::default()
-                        .fg(crate::tui::ui::priority_color(p).unwrap_or(self.theme.hl_fg))
+                        .fg(self.theme.priority_color(p).unwrap_or(self.theme.hl_fg))
                         .add_modifier(Modifier::BOLD)
                 }
                 QuickAddKind::Title => Style::default(),
@@ -521,7 +521,7 @@ impl<'a> App<'a> {
         }
         if let Some(p) = &parsed.priority {
             let (zh, en) = crate::tui::ui::priority_label(p).unwrap_or(("", ""));
-            let color = crate::tui::ui::priority_color(p).unwrap_or(self.theme.hl_fg);
+            let color = self.theme.priority_color(p).unwrap_or(self.theme.hl_fg);
             text_lines.push(Line::from(vec![
                 Span::styled(
                     tr!(self.lang, " 优先级: ", " Priority: "),

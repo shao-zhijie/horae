@@ -18,6 +18,11 @@ pub fn set_test_override() {
     TEST_OVERRIDE.store(true, Ordering::Relaxed);
 }
 
+/// 查询当前是否处于测试隔离模式。
+pub fn is_test_override() -> bool {
+    TEST_OVERRIDE.load(Ordering::Relaxed)
+}
+
 /// 一个 JSON 状态文件存储：`~/.config/horae/<filename>` 的 load/save。
 /// 文件缺失时 `load` 返回 `T::default()`；写入用 tmp+rename 原子替换，
 /// 避免并发读方读到半写的文件。

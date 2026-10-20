@@ -2086,6 +2086,170 @@ fn lang_and_theme_toggle_persist_to_settings() {
 }
 
 #[test]
+fn omarchy_themes_all_five_presets_and_resolution() {
+    use crate::tui::theme::{parse_hex_color, Theme, ThemeId};
+    use horae_core::model::task::Status;
+
+    // 1. from_name 解析别名覆盖
+    assert_eq!(
+        Theme::from_name("mocha").unwrap().id,
+        ThemeId::CatppuccinMocha
+    );
+    assert_eq!(
+        Theme::from_name("catppuccin").unwrap().id,
+        ThemeId::CatppuccinMocha
+    );
+    assert_eq!(
+        Theme::from_name("catppuccin-mocha").unwrap().id,
+        ThemeId::CatppuccinMocha
+    );
+
+    assert_eq!(
+        Theme::from_name("latte").unwrap().id,
+        ThemeId::CatppuccinLatte
+    );
+    assert_eq!(
+        Theme::from_name("catppuccin-latte").unwrap().id,
+        ThemeId::CatppuccinLatte
+    );
+
+    assert_eq!(
+        Theme::from_name("tokyo-night").unwrap().id,
+        ThemeId::TokyoNight
+    );
+    assert_eq!(
+        Theme::from_name("tokyonight").unwrap().id,
+        ThemeId::TokyoNight
+    );
+    assert_eq!(
+        Theme::from_name("tokyo_night").unwrap().id,
+        ThemeId::TokyoNight
+    );
+
+    assert_eq!(Theme::from_name("gruvbox").unwrap().id, ThemeId::Gruvbox);
+
+    assert_eq!(Theme::from_name("retro-82").unwrap().id, ThemeId::Retro82);
+    assert_eq!(Theme::from_name("retro_82").unwrap().id, ThemeId::Retro82);
+    assert_eq!(Theme::from_name("retro82").unwrap().id, ThemeId::Retro82);
+
+    assert!(Theme::from_name("unknown-theme-xyz").is_none());
+
+    // 2. 检查 5 个主题的明暗属性与特定配色调性
+    let mocha = Theme::catppuccin_mocha();
+    assert!(mocha.is_dark);
+    assert_eq!(mocha.bg, ratatui::style::Color::Rgb(30, 30, 46));
+
+    let latte = Theme::catppuccin_latte();
+    assert!(!latte.is_dark);
+    assert_eq!(latte.bg, ratatui::style::Color::Rgb(239, 241, 245));
+
+    let tokyo = Theme::tokyo_night();
+    assert!(tokyo.is_dark);
+    assert_eq!(tokyo.bg, ratatui::style::Color::Rgb(26, 27, 38));
+    assert_eq!(
+        tokyo.status_color(&Status::Next),
+        ratatui::style::Color::Rgb(158, 206, 106)
+    );
+
+    let gruvbox = Theme::gruvbox();
+    assert!(gruvbox.is_dark);
+    assert_eq!(gruvbox.bg, ratatui::style::Color::Rgb(40, 40, 40));
+    assert_eq!(
+        gruvbox.status_color(&Status::Waiting),
+        ratatui::style::Color::Rgb(216, 166, 87)
+    );
+
+    let retro = Theme::retro_82();
+    assert!(retro.is_dark);
+    assert_eq!(retro.bg, ratatui::style::Color::Rgb(5, 24, 46));
+    assert_eq!(retro.accent, ratatui::style::Color::Rgb(250, 169, 104));
+    assert_eq!(
+        retro.priority_color("high"),
+        Some(ratatui::style::Color::Rgb(248, 85, 37))
+    );
+
+    // 3. parse_hex_color 工具函数
+    assert_eq!(
+        parse_hex_color("#7aa2f7"),
+        Some(ratatui::style::Color::Rgb(122, 162, 247))
+    );
+    assert_eq!(
+        parse_hex_color("faa968"),
+        Some(ratatui::style::Color::Rgb(250, 169, 104))
+    );
+    assert_eq!(parse_hex_color("invalid"), None);
+}
+
+#[test]
+fn f5_cycles_all_five_themes_and_persists() {
+    horae_core::repo::state::set_test_override();
+    let mut conn = Connection::open(":memory:").unwrap();
+    migrate::run(&mut conn).unwrap();
+
+    let mut app = app_normal(&conn);
+    app.popup = None;
+    assert_eq!(app.theme.id, crate::tui::theme::ThemeId::CatppuccinMocha);
+
+    // 1. Mocha -> Latte
+    app.handle_key(kc(KeyCode::F(5))).unwrap();
+    assert_eq!(app.theme.id, crate::tui::theme::ThemeId::CatppuccinLatte);
+    assert_eq!(
+        horae_core::repo::settings::get(&conn, "theme")
+            .unwrap()
+            .as_deref(),
+        Some("latte")
+    );
+
+    // 2. Latte -> Tokyo Night
+    app.handle_key(kc(KeyCode::F(5))).unwrap();
+    assert_eq!(app.theme.id, crate::tui::theme::ThemeId::TokyoNight);
+    assert_eq!(
+        horae_core::repo::settings::get(&conn, "theme")
+            .unwrap()
+            .as_deref(),
+        Some("tokyo-night")
+    );
+
+    // 3. Tokyo Night -> Gruvbox
+    app.handle_key(kc(KeyCode::F(5))).unwrap();
+    assert_eq!(app.theme.id, crate::tui::theme::ThemeId::Gruvbox);
+    assert_eq!(
+        horae_core::repo::settings::get(&conn, "theme")
+            .unwrap()
+            .as_deref(),
+        Some("gruvbox")
+    );
+
+    // 4. Gruvbox -> Retro 82
+    app.handle_key(kc(KeyCode::F(5))).unwrap();
+    assert_eq!(app.theme.id, crate::tui::theme::ThemeId::Retro82);
+    assert_eq!(
+        horae_core::repo::settings::get(&conn, "theme")
+            .unwrap()
+            .as_deref(),
+        Some("retro-82")
+    );
+
+    // 5. Retro 82 -> Mocha
+    app.handle_key(kc(KeyCode::F(5))).unwrap();
+    assert_eq!(app.theme.id, crate::tui::theme::ThemeId::CatppuccinMocha);
+    assert_eq!(
+        horae_core::repo::settings::get(&conn, "theme")
+            .unwrap()
+            .as_deref(),
+        Some("mocha")
+    );
+
+    // 重新从 DB 初始化验证恢复
+    drop(app);
+    let mut conn = Connection::open(":memory:").unwrap();
+    migrate::run(&mut conn).unwrap();
+    horae_core::repo::settings::set(&conn, "theme", "retro-82").unwrap();
+    let app = app_normal(&conn);
+    assert_eq!(app.theme.id, crate::tui::theme::ThemeId::Retro82);
+}
+
+#[test]
 fn shift_c_enters_checklist_adding_and_pomo_config_moved_to_bracket() {
     let mut conn = Connection::open(":memory:").unwrap();
     migrate::run(&mut conn).unwrap();

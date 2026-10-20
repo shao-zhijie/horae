@@ -3,7 +3,7 @@ use crate::tui::icons::Icon;
 use crate::tui::keys::{ctx_of, strip_keys};
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
 };
 
@@ -63,12 +63,12 @@ impl<'a> App<'a> {
                 Span::raw(" · "),
                 Span::styled(
                     "!medium/!m/!2/!中",
-                    Style::default().fg(Color::Rgb(249, 226, 175)),
+                    Style::default().fg(self.theme.priority_medium),
                 ),
                 Span::raw(" · "),
                 Span::styled(
                     "!low/!l/!3/!低",
-                    Style::default().fg(Color::Rgb(137, 180, 250)),
+                    Style::default().fg(self.theme.priority_low),
                 ),
             ]),
             Line::from(vec![

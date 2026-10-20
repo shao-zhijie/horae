@@ -60,7 +60,7 @@ impl<'a> App<'a> {
                 ),
             ]));
         } else {
-            let st_color = ui::status_color(&d.task.status, self.theme.is_dark);
+            let st_color = self.theme.status_color(&d.task.status);
             lines.push(Line::from(vec![
                 Span::styled(
                     tr!(self.lang, "状态: ", "Status: "),
@@ -148,7 +148,7 @@ impl<'a> App<'a> {
         // 优先级（独立字段，不再作为标签）
         if let Some(ref p) = d.task.priority {
             if let Some((zh, en)) = ui::priority_label(p) {
-                let c = ui::priority_color(p).unwrap_or(self.theme.hl_fg);
+                let c = self.theme.priority_color(p).unwrap_or(self.theme.hl_fg);
                 lines.push(Line::from(vec![
                     Span::styled(
                         tr!(self.lang, "优先级: ", "Priority: "),
@@ -166,7 +166,10 @@ impl<'a> App<'a> {
                 Style::default().fg(self.theme.text_dim),
             )];
             for (i, tg) in d.tags.iter().enumerate() {
-                let c = ui::priority_color(&tg.name).unwrap_or(self.theme.hl_fg);
+                let c = self
+                    .theme
+                    .priority_color(&tg.name)
+                    .unwrap_or(self.theme.hl_fg);
                 tag_spans.push(Span::styled(
                     format!("@{}", tg.name),
                     Style::default().fg(c),

@@ -125,28 +125,57 @@ impl<'a> App<'a> {
                 };
             }
             KeyCode::F(5) => {
-                self.theme = self.theme.toggle();
-                let saved = horae_core::repo::settings::set(
-                    self.conn,
-                    "theme",
-                    if self.theme.is_dark { "mocha" } else { "latte" },
-                );
-                if self.note(saved) {
-                    self.status_message = if self.theme.is_dark {
-                        tr!(
+                let is_omarchy = crate::tui::theme::is_omarchy_system();
+                if is_omarchy && self.omarchy_auto {
+                    let next = crate::tui::theme::Theme::catppuccin_latte();
+                    let key = next.id.key();
+                    let saved = horae_core::repo::settings::set(self.conn, "theme", key);
+                    self.omarchy_auto = false;
+                    self.theme = next;
+                    if self.note(saved) {
+                        self.status_message = match self.lang {
+                            horae_core::i18n::Lang::Zh => format!(
+                                "主题: {}",
+                                self.theme.id.display_name(horae_core::i18n::Lang::Zh)
+                            ),
+                            horae_core::i18n::Lang::En => format!(
+                                "Theme: {}",
+                                self.theme.id.display_name(horae_core::i18n::Lang::En)
+                            ),
+                        };
+                    }
+                } else if is_omarchy && self.theme.id == crate::tui::theme::ThemeId::Retro82 {
+                    let saved = horae_core::repo::settings::set(self.conn, "theme", "auto");
+                    self.omarchy_auto = true;
+                    if let Some(t) = crate::tui::theme::detect_omarchy_theme() {
+                        self.theme = t;
+                    }
+                    if self.note(saved) {
+                        self.status_message = tr!(
                             self.lang,
-                            "主题: Catppuccin 摩卡 (深色)",
-                            "Theme: Catppuccin Mocha (Dark)"
+                            "主题: 自动跟随 Omarchy 系统",
+                            "Theme: Auto (Follow Omarchy)"
                         )
-                        .to_string()
-                    } else {
-                        tr!(
-                            self.lang,
-                            "主题: Catppuccin 拿铁 (亮色)",
-                            "Theme: Catppuccin Latte (Light)"
-                        )
-                        .to_string()
-                    };
+                        .to_string();
+                    }
+                } else {
+                    let next = self.theme.next();
+                    let key = next.id.key();
+                    let saved = horae_core::repo::settings::set(self.conn, "theme", key);
+                    self.omarchy_auto = false;
+                    self.theme = next;
+                    if self.note(saved) {
+                        self.status_message = match self.lang {
+                            horae_core::i18n::Lang::Zh => format!(
+                                "主题: {}",
+                                self.theme.id.display_name(horae_core::i18n::Lang::Zh)
+                            ),
+                            horae_core::i18n::Lang::En => format!(
+                                "Theme: {}",
+                                self.theme.id.display_name(horae_core::i18n::Lang::En)
+                            ),
+                        };
+                    }
                 }
             }
             KeyCode::F(6) => {

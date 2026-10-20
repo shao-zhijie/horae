@@ -281,6 +281,8 @@ pub(crate) struct App<'a> {
     pub(crate) pending_purge_ids: Vec<String>,
     pub(crate) hide_pomo_banner: bool,
     pub(crate) theme: crate::tui::theme::Theme,
+    pub(crate) omarchy_auto: bool,
+    pub(crate) last_theme_check: std::time::Instant,
     pub(crate) popup: Option<Popup>,
     pub(crate) notification_engine: horae_core::notification::NotificationEngine,
     /// 上次执行每日摘要检查的时间戳（毫秒），用于 60s 节流（Bug4）。
@@ -341,9 +343,30 @@ impl<'a> App<'a> {
             Some("en") => horae_core::i18n::Lang::En,
             _ => horae_core::i18n::Lang::Zh,
         };
-        let theme = match settings_map.get("theme").map(|s| s.as_str()) {
-            Some("latte") => crate::tui::theme::Theme::catppuccin_latte(),
-            _ => crate::tui::theme::Theme::catppuccin_mocha(),
+        let (theme, omarchy_auto) = {
+            let env_theme = std::env::var("HORAE_THEME")
+                .ok()
+                .and_then(|s| crate::tui::theme::Theme::from_name(&s));
+            if let Some(t) = env_theme {
+                (t, false)
+            } else if let Some(key) = settings_map.get("theme") {
+                if key == "auto" {
+                    let detected = crate::tui::theme::detect_omarchy_theme()
+                        .unwrap_or_else(crate::tui::theme::Theme::catppuccin_mocha);
+                    (detected, true)
+                } else {
+                    let loaded = crate::tui::theme::Theme::from_name(key)
+                        .unwrap_or_else(crate::tui::theme::Theme::catppuccin_mocha);
+                    (loaded, false)
+                }
+            } else {
+                let detected = crate::tui::theme::detect_omarchy_theme();
+                let is_omarchy = crate::tui::theme::is_omarchy_system();
+                (
+                    detected.unwrap_or_else(crate::tui::theme::Theme::catppuccin_mocha),
+                    is_omarchy,
+                )
+            }
         };
         let quotes = horae_core::repo::quotes::Quotes {
             enabled: matches!(settings_map.get("quotes").map(|s| s.as_str()), Some("1")),
@@ -423,6 +446,8 @@ impl<'a> App<'a> {
             pending_purge_ids: Vec::new(),
             hide_pomo_banner: false,
             theme,
+            omarchy_auto,
+            last_theme_check: std::time::Instant::now(),
             popup: None,
             notification_engine: horae_core::notification::NotificationEngine::new(),
             last_notify_check_ms: 0,
@@ -575,6 +600,23 @@ impl<'a> App<'a> {
                 }
                 _ => {}
             });
+        }
+    }
+
+    /// 若处于自动跟随 Omarchy 主题模式，定期探测系统主题变化并热重载。
+    pub(crate) fn check_omarchy_theme_sync(&mut self) {
+        if !self.omarchy_auto {
+            return;
+        }
+        if self.last_theme_check.elapsed() < std::time::Duration::from_millis(1000) {
+            return;
+        }
+        self.last_theme_check = std::time::Instant::now();
+        if let Some(detected) = crate::tui::theme::detect_omarchy_theme() {
+            if detected.id != self.theme.id {
+                self.theme = detected;
+                self.needs_clear = true;
+            }
         }
     }
 

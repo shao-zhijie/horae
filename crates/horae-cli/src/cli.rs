@@ -21,6 +21,11 @@ pub struct Cli {
     #[arg(long, value_name = "LANG", global = true)]
     pub lang: Option<String>,
 
+    /// UI theme: `catppuccin`, `latte`, `tokyo-night`, `gruvbox`, `retro-82`, or `auto`.
+    /// Also configurable via `HORAE_THEME` environment variable.
+    #[arg(long, value_name = "THEME", global = true)]
+    pub theme: Option<String>,
+
     /// Launch in flash capture mode (quick capture, Enter to save and exit)
     #[arg(short = 'f', long = "flash", conflicts_with = "normal")]
     pub flash: bool,

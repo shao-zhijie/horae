@@ -12,6 +12,9 @@ fn main() -> Result<()> {
     cli_i18n::localize(&mut cmd, lang);
     let matches = cmd.get_matches();
     let cli = cli::Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+    if let Some(ref t) = cli.theme {
+        std::env::set_var("HORAE_THEME", t);
+    }
     if let Some(cli::Command::Completions { shell }) = cli.command {
         cli::Cli::print_completions(shell);
         return Ok(());
