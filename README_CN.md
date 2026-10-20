@@ -141,7 +141,7 @@ cargo build --release      # 产物：target/release/horae
 首次运行前有两件事值得知道：
 
 - 界面图标默认使用 Nerd Font 字形。启动时会探测已安装字体，没有则自动回退为纯 ASCII，不会出现豆腐块；可用 `HORAE_ICONS=nerd|ascii` 强制指定。
-- 桌面通知依赖 `notify-send`，仅 Linux 可用。Windows 下没有系统横幅，但 TUI 提醒、番茄钟与 ntfy 推送照常工作；数据目录为 `%APPDATA%\horae\`。
+- 桌面通知通过原生 D-Bus（`org.freedesktop.Notifications`）直接发送，避免通过 `notify-send` 命令行参数泄露敏感任务标题，仅 Linux 可用。Windows 下没有系统横幅，但 TUI 提醒、番茄钟与 ntfy 推送照常工作；数据目录为 `%APPDATA%\horae\`。
 
 ## 快速上手
 

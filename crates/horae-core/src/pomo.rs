@@ -358,10 +358,8 @@ pub(crate) fn advance_phase(
 }
 
 pub fn notify(summary: &str, body: &str) {
-    // 桌面图形通知（非阻塞异步启动，避免阻塞计时与渲染，带 -a horae 且不传 -i 避免 28 号日历图标）
-    let _ = StdCommand::new("notify-send")
-        .args(["-a", "horae", "-u", "normal", summary, body])
-        .spawn();
+    // 桌面图形通知（原生走 D-Bus 发送，避免 notify-send 命令行暴露敏感任务标题）
+    crate::notify::desktop(summary, body);
 
     // 音效提醒：在独立线程中异步播放，防止音频服务卡顿时阻塞 daemon 计时
     let sound_paths = [

@@ -170,7 +170,7 @@ pub fn waybar(slot: Option<usize>, limit: Option<usize>, emit_all: bool) -> Resu
     let window_changed = state.last_window != win_keys;
 
     if slot == 1 {
-        // 触发到点闹铃（notify-send + 声音）; 已响铃任务仍留在窗口内
+        // 触发到点闹铃（D-Bus 桌面通知 + 声音）; 已响铃任务仍留在窗口内
         let mut dirty = false;
         for (id, d) in due_to_ring(&all, &state.rung, now, lead_ms) {
             if let Ok(t) = tasks::get(&conn, &id) {

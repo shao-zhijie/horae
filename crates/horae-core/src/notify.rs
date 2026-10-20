@@ -8,22 +8,35 @@ use anyhow::Result;
 use chrono::{Duration, NaiveDate};
 use rusqlite::Connection;
 
-/// 桌面通知：直接非阻塞启动 `notify-send`（带 app-name 与自适应级别），避免阻塞调用线程。
-/// 缺省不传 `-i` 图标，去除如 28 号等易产生误导的日历图标。
+/// 桌面通知：通过 Session D-Bus 直接发送通知（带 app-name 与自适应级别），避免阻塞调用线程。
+/// 彻底去除 notify-send 命令行参数暴露私有任务标题的风险，缺省不传 `-i` 图标以去除易产生误导的日历图标。
 pub fn desktop(summary: &str, body: &str) {
     desktop_notify(summary, body, "normal", None);
 }
 
 /// 支持指定紧迫度（low / normal / critical）与可选图标的桌面通知。
-/// 当 icon 为 None 时不向 notify-send 传递 `-i` 参数，彻底去除不必要的日历（如28号）图标。
+/// 原生走 D-Bus 发送，避免通过子进程命令行参数泄露敏感标题。
 pub fn desktop_notify(summary: &str, body: &str, urgency: &str, icon: Option<&str>) {
-    let mut cmd = std::process::Command::new("notify-send");
-    cmd.args(["-a", "horae", "-u", urgency]);
-    if let Some(ic) = icon {
-        cmd.args(["-i", ic]);
-    }
-    cmd.args([summary, body]);
-    let _ = cmd.spawn();
+    let summary = summary.to_string();
+    let body = body.to_string();
+    let urgency = match urgency {
+        "low" => notify_rust::Urgency::Low,
+        "critical" => notify_rust::Urgency::Critical,
+        _ => notify_rust::Urgency::Normal,
+    };
+    let icon = icon.map(|s| s.to_string());
+
+    std::thread::spawn(move || {
+        let mut n = notify_rust::Notification::new();
+        n.appname("horae");
+        n.summary(&summary);
+        n.body(&body);
+        n.urgency(urgency);
+        if let Some(ref ic) = icon {
+            n.icon(ic);
+        }
+        let _ = n.show();
+    });
 }
 
 /// 收件箱/等待超期的默认阈值天数。
@@ -415,5 +428,18 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(val, "0");
+    }
+
+    #[test]
+    fn desktop_notify_does_not_panic() {
+        // 验证原生 D-Bus 发送逻辑在不同平台与紧迫度下均可安全调用而不引发 panic
+        desktop_notify("Test Summary", "Test Body", "low", None);
+        desktop_notify(
+            "Test Critical",
+            "Test Body",
+            "critical",
+            Some("dialog-information"),
+        );
+        desktop("Test Normal", "Test Body");
     }
 }

@@ -141,7 +141,7 @@ cargo build --release      # binary: target/release/horae
 Two things worth knowing before the first run:
 
 - Icons are Nerd Font glyphs. On startup `horae` probes installed fonts and falls back to plain ASCII if none is found, so you never see tofu boxes. Force a style with `HORAE_ICONS=nerd|ascii`.
-- Desktop notifications use `notify-send` and are Linux-only. On Windows the TUI alarms, the pomodoro timer and ntfy pushes still work; data is stored under `%APPDATA%\horae\`.
+- Desktop notifications use native D-Bus notifications (`org.freedesktop.Notifications`) and are Linux-only (avoiding command-line argument leakage). On Windows the TUI alarms, the pomodoro timer and ntfy pushes still work; data is stored under `%APPDATA%\horae\`.
 
 ## Quick start
 
