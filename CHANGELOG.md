@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-20
+
+### Added
+
+- **Omarchy 桌面环境与五套核心主题深度适配**：
+  - 新增 `Tokyo Night`（东京之夜深色）、`Gruvbox`（复古暖色深色）与 `Retro 82`（复古未来深色）色板，与既有的 `Catppuccin Mocha`（深色）及 `Catppuccin Latte`（浅色）构成五大官方调校主题。
+  - 在 Omarchy 环境下自动探测系统当前生效的主题（`~/.local/state/omarchy/current/theme.name` 或 `~/.config/omarchy`），开箱即用，并在运行中实时热重载跟随桌面主题切换。
+  - GTD 状态语义色与三级优先级色标全量对接主题色系，避免异色主题下的视觉突兀与对比度缺失。
+  - TUI 支持 `F5` 键在全部主题间平滑循环切换与持久化，命令行支持 `--theme <NAME>` 全局参数与 `HORAE_THEME` 环境变量覆盖。
+- **循环排程时间预览与通知语义优化**：
+  - 录入时实时预览循环排程的下一个发生时隙；
+  - 启动与后台通知语义精细化调校。
+
 ### Changed
 
 - **文档结构重整**：`docs/` 目录解散，文档全部平铺到仓库根目录——`README.md`（英文手册，crates.io / npm 入口）、`README_CN.md`（中文手册）、`ARCHITECTURE.md`（架构与领域词汇，由原 `architecture-handoff.md` / `CONTEXT.md` / `design-profiles-and-cloud.md` 合并精简）、`CONTRIBUTING.md`（新增贡献流程）、`AGENTS.md`、`CHANGELOG.md`；AI 技能包迁入 `.agents/skills/horae/`。原 `issues.md`（问题均已修复）与 `focus-algorithm.md`（内容并入手册「专注推荐」一节）删除。手册同步去除营销化表述，改为事实性说明。

@@ -918,7 +918,7 @@ dependencies = [
 
 [[package]]
 name = "horae"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "arboard",
@@ -939,7 +939,7 @@ dependencies = [
 
 [[package]]
 name = "horae-core"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "base64",
@@ -961,7 +961,7 @@ dependencies = [
 
 [[package]]
 name = "horae-tui"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "chrono",
