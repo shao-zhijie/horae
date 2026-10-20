@@ -19,9 +19,10 @@ pub fn open(name: Option<&str>) -> anyhow::Result<Connection> {
         .parent()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
-    std::fs::create_dir_all(&dir)?;
+    crate::fs_util::ensure_private_dir(&dir)?;
 
-    let mut conn = Connection::open(path)?;
+    let mut conn = Connection::open(&path)?;
+    let _ = crate::fs_util::ensure_sqlite_files_private(&path);
 
     // 先设 busy_timeout，让随后的 journal_mode 切换（需要写锁）也能等待而不是
     // 立即报 `database is locked`；WAL 让 CLI/TUI/pomo 多进程并发读不互相阻塞。
@@ -35,4 +36,38 @@ pub fn open(name: Option<&str>) -> anyhow::Result<Connection> {
 
     migrate::run(&mut conn)?;
     Ok(conn)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg(unix)]
+    fn test_conn_open_secures_directory_and_file_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        crate::testutil::with_test_config_dir(|| {
+            let conn = open(None).expect("open connection");
+            drop(conn);
+
+            let cfg = crate::config::Config::load().expect("load config");
+            let (_, profile) = cfg.resolve_profile(None).expect("resolve profile");
+            let db_path = cfg.db_path(profile);
+            let dir = db_path.parent().expect("db parent dir");
+
+            let dir_meta = std::fs::metadata(dir).expect("dir metadata");
+            assert_eq!(
+                dir_meta.permissions().mode() & 0o777,
+                0o700,
+                "database directory must be 0700"
+            );
+
+            let db_meta = std::fs::metadata(&db_path).expect("db file metadata");
+            assert_eq!(
+                db_meta.permissions().mode() & 0o777,
+                0o600,
+                "database file must be 0600"
+            );
+        });
+    }
 }

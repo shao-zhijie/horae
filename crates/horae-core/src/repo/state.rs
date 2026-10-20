@@ -37,7 +37,7 @@ impl<T: Default + Serialize + DeserializeOwned> JsonStateStore<T> {
     /// 测试期间（`TEST_OVERRIDE` 置位后）构造的存储 load/save 均为空操作。
     pub fn new(filename: &str) -> Self {
         let mut path = crate::config::config_dir();
-        let _ = std::fs::create_dir_all(&path);
+        let _ = crate::fs_util::ensure_private_dir(&path);
         path.push(filename);
         Self {
             path,
@@ -76,8 +76,9 @@ impl<T: Default + Serialize + DeserializeOwned> JsonStateStore<T> {
         }
         let content = serde_json::to_string_pretty(state)?;
         let tmp = self.path.with_extension("json.tmp");
-        std::fs::write(&tmp, content)?;
+        crate::fs_util::write_private_file(&tmp, content)?;
         std::fs::rename(&tmp, &self.path)?;
+        let _ = crate::fs_util::ensure_private_file(&self.path);
         Ok(())
     }
 

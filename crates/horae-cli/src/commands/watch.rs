@@ -67,8 +67,8 @@ pub fn default_sync_dir() -> PathBuf {
 
 /// 常驻（或 `--once` 单轮）对账入口。
 pub fn run(conn: &Connection, args: WatchArgs) -> Result<()> {
-    fs::create_dir_all(&args.dir)?;
-    fs::create_dir_all(args.dir.join(DIR_REMINDERS))?;
+    horae_core::fs_util::ensure_private_dir(&args.dir)?;
+    horae_core::fs_util::ensure_private_dir(&args.dir.join(DIR_REMINDERS))?;
     if args.once {
         let s = process_once(conn, &args.dir, args.profile.as_deref())?;
         println!(
@@ -137,8 +137,8 @@ pub fn process_once(
     dir: &Path,
     profile: Option<&str>,
 ) -> Result<ProcessSummary> {
-    fs::create_dir_all(dir)?;
-    fs::create_dir_all(dir.join(DIR_REMINDERS))?;
+    horae_core::fs_util::ensure_private_dir(dir)?;
+    horae_core::fs_util::ensure_private_dir(&dir.join(DIR_REMINDERS))?;
 
     let mut summary = ProcessSummary::default();
     let mut first_err: Option<anyhow::Error> = None;

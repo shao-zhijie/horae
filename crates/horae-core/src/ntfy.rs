@@ -179,7 +179,7 @@ pub fn push_due(
     cfg: &NtfyConfig,
     transport: &dyn NtfyTransport,
 ) -> Result<usize> {
-    fs::create_dir_all(dir)?;
+    crate::fs_util::ensure_private_dir(dir)?;
 
     let all = tasks::list(
         conn,

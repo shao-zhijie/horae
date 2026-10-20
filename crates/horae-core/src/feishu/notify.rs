@@ -62,7 +62,7 @@ pub fn push_due(
     cfg: &FeishuConfig,
     transport: &dyn FeishuTransport,
 ) -> Result<usize> {
-    fs::create_dir_all(dir)?;
+    crate::fs_util::ensure_private_dir(dir)?;
 
     let webhook_url = match &cfg.webhook_url {
         Some(url) if !url.trim().is_empty() => url,

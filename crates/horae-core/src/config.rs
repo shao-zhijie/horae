@@ -207,7 +207,10 @@ impl Config {
     pub fn load() -> anyhow::Result<Self> {
         let path = Self::path();
         let raw = match fs::read_to_string(&path) {
-            Ok(raw) => raw,
+            Ok(raw) => {
+                let _ = crate::fs_util::ensure_private_file(&path);
+                raw
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
             Err(e) => return Err(e).context("read config"),
         };
@@ -223,12 +226,13 @@ impl Config {
     /// Atomically write config to disk (tmp file + rename).
     pub fn save(&self) -> anyhow::Result<()> {
         let dir = config_dir();
-        fs::create_dir_all(&dir)?;
+        crate::fs_util::ensure_private_dir(&dir)?;
         let path = Self::path();
         let tmp = dir.join(format!("{CONFIG_FILE}.{}.tmp", std::process::id()));
         let json = serde_json::to_string_pretty(self)?;
-        fs::write(&tmp, json)?;
+        crate::fs_util::write_private_file(&tmp, json)?;
         fs::rename(&tmp, &path)?;
+        let _ = crate::fs_util::ensure_private_file(&path);
         Ok(())
     }
 
@@ -417,6 +421,32 @@ mod tests {
             let p = cfg.db_path(cfg.profile("default").unwrap());
             assert!(p.is_absolute());
             assert!(p.to_string_lossy().ends_with("horae/horae.db"));
+        });
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn save_creates_private_config_file_and_dir() {
+        use std::os::unix::fs::PermissionsExt;
+        crate::testutil::with_test_config_dir(|| {
+            let cfg = Config::default();
+            cfg.save().expect("save config");
+
+            let dir = config_dir();
+            let dir_meta = std::fs::metadata(&dir).expect("dir metadata");
+            assert_eq!(
+                dir_meta.permissions().mode() & 0o777,
+                0o700,
+                "config directory must be 0700"
+            );
+
+            let path = Config::path();
+            let file_meta = std::fs::metadata(&path).expect("config file metadata");
+            assert_eq!(
+                file_meta.permissions().mode() & 0o777,
+                0o600,
+                "config file must be 0600"
+            );
         });
     }
 }
