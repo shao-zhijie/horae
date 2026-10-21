@@ -39,15 +39,17 @@ fn edit_notes_interactive(initial: &str) -> Result<String> {
         std::process::id(),
         horae_core::time::now_ms()
     ));
-    std::fs::write(&temp_path, initial)?;
+    horae_core::fs_util::write_private_file(&temp_path, initial)?;
     let status = std::process::Command::new("sh")
         .arg("-c")
         .arg(format!("{} \"{}\"", editor, temp_path.display()))
         .status();
     let new_content = std::fs::read_to_string(&temp_path).unwrap_or_default();
     let _ = std::fs::remove_file(&temp_path);
-    if let Err(e) = status {
-        anyhow::bail!("failed to launch editor: {}", e);
+    match status {
+        Ok(s) if !s.success() => anyhow::bail!("editor exited with error: {}", s),
+        Err(e) => anyhow::bail!("failed to launch editor: {}", e),
+        _ => {}
     }
     Ok(new_content)
 }
@@ -395,5 +397,22 @@ mod tests {
             .map(|tg| tg.name)
             .collect();
         assert!(tags2.contains(&"extra".to_string()));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_edit_notes_interactive_permissions() {
+        let editor_script =
+            "python3 -c 'import sys, os; mode = os.stat(sys.argv[1]).st_mode & 0o777; sys.exit(0 if mode == 0o600 else 1)'";
+        std::env::set_var("EDITOR", editor_script);
+
+        let initial = "secret test notes";
+        let res = edit_notes_interactive(initial);
+        assert!(
+            res.is_ok(),
+            "edit_notes_interactive should succeed and temp file must have 0600 mode: {:?}",
+            res.err()
+        );
+        assert_eq!(res.unwrap(), initial);
     }
 }

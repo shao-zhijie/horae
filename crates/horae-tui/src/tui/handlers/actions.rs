@@ -56,17 +56,18 @@ impl<'a> App<'a> {
                             .join(format!("horae_notes_{}.md", uuid::Uuid::new_v4()));
 
                         let result = (|| -> Result<()> {
-                            use std::io::Write;
-                            let mut file = std::fs::File::create(&temp_path)?;
-                            file.write_all(task.notes.as_bytes())?;
-                            drop(file);
+                            horae_core::fs_util::write_private_file(&temp_path, &task.notes)?;
 
                             let status = std::process::Command::new("sh")
                                 .arg("-c")
                                 .arg(format!("{} \"{}\"", editor, temp_path.display()))
                                 .status();
-                            if let Err(e) = status {
-                                anyhow::bail!("failed to launch editor: {}", e);
+                            match status {
+                                Ok(s) if !s.success() => {
+                                    anyhow::bail!("editor exited with error: {}", s)
+                                }
+                                Err(e) => anyhow::bail!("failed to launch editor: {}", e),
+                                _ => {}
                             }
                             Ok(())
                         })();

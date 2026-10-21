@@ -68,6 +68,8 @@ pub fn write_private_file(path: &Path, contents: impl AsRef<[u8]>) -> std::io::R
             .open(path)?;
         file.write_all(contents.as_ref())?;
         file.flush()?;
+        drop(file);
+        let _ = ensure_private_file(path);
         Ok(())
     }
     #[cfg(not(unix))]
@@ -128,6 +130,16 @@ mod tests {
         fperms.set_mode(0o644);
         std::fs::set_permissions(&file_path, fperms).unwrap();
         ensure_private_file(&file_path).unwrap();
+        assert_eq!(
+            std::fs::metadata(&file_path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+
+        // Relax file permissions to 0644, then overwrite via write_private_file
+        let mut fperms2 = std::fs::metadata(&file_path).unwrap().permissions();
+        fperms2.set_mode(0o644);
+        std::fs::set_permissions(&file_path, fperms2).unwrap();
+        write_private_file(&file_path, b"updated secret").unwrap();
         assert_eq!(
             std::fs::metadata(&file_path).unwrap().permissions().mode() & 0o777,
             0o600
