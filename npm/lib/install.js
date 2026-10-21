@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
@@ -51,6 +52,7 @@ function downloadFile(url, dest, maxRedirects = 5) {
       return reject(new Error(`Too many redirects when downloading ${url}`));
     }
 
+    // Refuse to follow a redirect that downgrades from HTTPS to HTTP.
     const client = url.startsWith('https') ? https : http;
     const req = client.get(url, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
@@ -77,6 +79,37 @@ function downloadFile(url, dest, maxRedirects = 5) {
       fs.unlink(dest, () => {});
       reject(err);
     });
+  });
+}
+
+/**
+ * Verify that `filePath` matches the SHA-256 hash in `sha256FileContent`.
+ * The .sha256 file produced by the release workflow uses the format:
+ *   <hex-hash>  <filename>
+ * (two spaces, as emitted by `sha256sum` / PowerShell Get-FileHash).
+ */
+function verifySha256(filePath, sha256FileContent) {
+  return new Promise((resolve, reject) => {
+    const expected = sha256FileContent.trim().split(/\s+/)[0].toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(expected)) {
+      return reject(new Error(`[horae-cli] Malformed SHA-256 checksum file (got: ${expected})`));
+    }
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(filePath);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => {
+      const actual = hash.digest('hex');
+      if (actual !== expected) {
+        reject(new Error(
+          `[horae-cli] SHA-256 mismatch — download may be corrupted or tampered:\n` +
+          `  expected ${expected}\n` +
+          `  got      ${actual}`
+        ));
+      } else {
+        resolve();
+      }
+    });
+    stream.on('error', reject);
   });
 }
 
@@ -128,13 +161,32 @@ async function install() {
   const version = process.env.HORAE_VERSION || pkg.version;
   const filename = `horae-v${version}-${target}.${ext}`;
   const baseUrl = (process.env.HORAE_MIRROR || 'https://github.com').replace(/\/+$/, '');
+
+  // Refuse plaintext HTTP mirrors — a MITM could substitute a malicious binary.
+  if (!baseUrl.startsWith('https://')) {
+    throw new Error(
+      `[horae-cli] HORAE_MIRROR must use HTTPS (got: ${baseUrl}). ` +
+      `Plaintext HTTP is not allowed because the downloaded binary is executed directly.`
+    );
+  }
+
   const downloadUrl = `${baseUrl}/zhaohang1205/horae/releases/download/v${version}/${filename}`;
+  const sha256Url   = `${downloadUrl}.sha256`;
 
   const tempArchive = path.join(binDir, `temp-${filename}`);
+  const tempSha256  = `${tempArchive}.sha256`;
 
   console.log(`[horae-cli] Downloading horae v${version} for ${target}...`);
   try {
     await downloadFile(downloadUrl, tempArchive);
+
+    // Verify integrity before extracting.
+    console.log(`[horae-cli] Verifying SHA-256 checksum...`);
+    await downloadFile(sha256Url, tempSha256);
+    const sha256Content = fs.readFileSync(tempSha256, 'utf8');
+    await verifySha256(tempArchive, sha256Content);
+    console.log(`[horae-cli] SHA-256 verified ✓`);
+
     console.log(`[horae-cli] Extracting ${filename}...`);
     extractArchive(tempArchive, binDir, isZip);
 
@@ -146,10 +198,10 @@ async function install() {
     console.error(`[horae-cli] Error: ${err.message}`);
     throw err;
   } finally {
-    if (fs.existsSync(tempArchive)) {
-      try {
-        fs.unlinkSync(tempArchive);
-      } catch (_) {}
+    for (const tmp of [tempArchive, tempSha256]) {
+      if (fs.existsSync(tmp)) {
+        try { fs.unlinkSync(tmp); } catch (_) {}
+      }
     }
   }
 }
