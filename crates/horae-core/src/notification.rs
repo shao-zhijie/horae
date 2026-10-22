@@ -302,15 +302,22 @@ impl NotificationEngine {
     fn with_store(state_file: &'static str) -> Self {
         // Bug3 修复：从持久化文件恢复状态，避免重启后重复通知。
         let saved: NotifyTuiState = JsonStateStore::new(state_file).load().unwrap_or_default();
+        let test_mode = cfg!(test) || crate::repo::state::is_test_override();
         Self {
             // Delay first background scan by 1 second so it is off the critical startup path.
-            #[cfg(not(test))]
-            last_tick_ms: crate::time::now_ms() - 9_000,
-            #[cfg(test)]
-            last_tick_ms: 0,
+            last_tick_ms: if test_mode {
+                0
+            } else {
+                crate::time::now_ms() - 9_000
+            },
             notified: saved.notified.into_iter().collect(),
             state_file,
         }
+    }
+
+    /// 重置节流计时（测试辅助）。
+    pub fn reset_throttle(&mut self) {
+        self.last_tick_ms = 0;
     }
 
     /// Evaluates due tasks and returns a list of events to be notified.

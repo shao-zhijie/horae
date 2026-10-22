@@ -2,6 +2,9 @@ pub mod alarm;
 pub mod backup;
 pub mod modules;
 pub mod notify;
+pub mod password {
+    pub use crate::password::*;
+}
 pub mod pomodoro;
 pub mod quotes;
 pub mod settings;

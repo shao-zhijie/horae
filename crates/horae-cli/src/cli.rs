@@ -26,6 +26,10 @@ pub struct Cli {
     #[arg(long, value_name = "THEME", global = true)]
     pub theme: Option<String>,
 
+    /// Password for protected databases (or set HORAE_PASSWORD env var)
+    #[arg(long, value_name = "PASSWORD", global = true)]
+    pub password: Option<String>,
+
     /// Launch in flash capture mode (quick capture, Enter to save and exit)
     #[arg(short = 'f', long = "flash", conflicts_with = "normal")]
     pub flash: bool,
@@ -439,6 +443,29 @@ pub enum Command {
         after_help = "Usage:\n  horae completions bash\n  horae completions fish\n\nInstall into ~/.bashrc or ~/.config/fish/completions/"
     )]
     Completions { shell: Shell },
+    /// Manage sound effects (status, on, off, toggle, test)
+    #[command(
+        about = "Manage sound effects (status, on, off, toggle, test)",
+        visible_alias = "bell"
+    )]
+    Sound {
+        #[arg(value_name = "ACTION", help = "status | on | off | toggle | test")]
+        action: Option<String>,
+        #[arg(
+            value_name = "NAME",
+            help = "Optional sound name for testing (focus_start, break_start, break_end, focus_stop, task_due, task_complete)"
+        )]
+        name: Option<String>,
+    },
+    /// Manage password protection mode for data security
+    #[command(
+        about = "Manage password protection mode (enable, disable, change, status)",
+        visible_alias = "passwd"
+    )]
+    Password {
+        #[command(subcommand)]
+        action: Option<PasswordAction>,
+    },
     /// Manage data-set profiles (list, create, delete, rename, set default)
     #[command(
         long_about = "Profiles let you keep separate data sets (e.g. work / personal / prod1) \
@@ -494,6 +521,33 @@ pub enum FeishuAction {
         /// Only pull remote tasks from Feishu
         #[arg(long)]
         pull: bool,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+pub enum PasswordAction {
+    /// Show current password protection status
+    Status,
+    /// Enable password protection mode
+    Enable {
+        /// Password to set (prompts interactively if omitted)
+        #[arg(long)]
+        password: Option<String>,
+    },
+    /// Disable password protection mode
+    Disable {
+        /// Current password (prompts interactively if omitted)
+        #[arg(long)]
+        password: Option<String>,
+    },
+    /// Change password
+    Change {
+        /// Current password (prompts interactively if omitted)
+        #[arg(long)]
+        old_password: Option<String>,
+        /// New password (prompts interactively if omitted)
+        #[arg(long)]
+        new_password: Option<String>,
     },
 }
 

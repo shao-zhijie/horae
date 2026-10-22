@@ -138,8 +138,8 @@ pub fn run_with_mode(
                 .map(|c| c.default_profile)
         })
         .unwrap_or_default();
-    // 闪念模式下跳过开屏页，实现极速就绪；有开屏页时在首帧绘制时冻结真实用时
-    if app.modules.splash && launch_mode != LaunchMode::Flash {
+    // 闪念模式或密码锁定模式下跳过开屏页，实现极速就绪与数据安全
+    if app.modules.splash && launch_mode != LaunchMode::Flash && !app.locked {
         if let Ok(new_lang) = splash::show_splash(conn, app.lang, app.icon_style) {
             app.lang = new_lang;
         }
@@ -184,9 +184,11 @@ fn run_app(
             terminal.clear()?;
             app.needs_clear = false;
         }
-        app.check_notifications();
-        app.refresh_pomo();
-        app.check_omarchy_theme_sync();
+        if !app.locked {
+            app.check_notifications();
+            app.refresh_pomo();
+            app.check_omarchy_theme_sync();
+        }
         terminal.draw(|f| app.render(f))?;
         if event::poll(Duration::from_millis(100))? {
             match event::read()? {

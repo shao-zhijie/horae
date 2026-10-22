@@ -200,6 +200,14 @@ impl<'a> App<'a> {
             KeyCode::F(7) => {
                 self.popup = Some(crate::tui::app::Popup::ModuleToggles(0));
             }
+            KeyCode::Char('L') => {
+                if self.password_enabled {
+                    self.locked = true;
+                    self.lock_input.clear();
+                    self.lock_error = None;
+                    return Ok(true);
+                }
+            }
             KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.show_syntax = !self.show_syntax;
                 self.syntax_scroll = 0;

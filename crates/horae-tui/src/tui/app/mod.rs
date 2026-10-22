@@ -163,6 +163,26 @@ pub(crate) enum Popup {
     TaskDueNow(String, String), // task_id, task_title
     /// Feature toggles modal (current selected index)
     ModuleToggles(usize),
+    /// Password setup modal (first password input or confirm input)
+    PasswordSet {
+        is_confirm: bool,
+        input: String,
+        first_pass: String,
+        error: Option<String>,
+    },
+    /// Password disable modal (enter current password to disable)
+    PasswordDisable {
+        input: String,
+        error: Option<String>,
+    },
+    /// Password change modal
+    PasswordChange {
+        step: u8, // 0 = old pass, 1 = new pass, 2 = confirm pass
+        old_pass: String,
+        new_pass: String,
+        input: String,
+        error: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -328,6 +348,16 @@ pub(crate) struct App<'a> {
     pub(crate) lunar_enabled: bool,
     /// 今日聚合历法与节气信息。
     pub(crate) calendar_info: Option<horae_core::lunar::CalendarDayInfo>,
+    /// 密码保护模式开关（settings 键 `password_enabled`，默认关闭）。
+    pub(crate) password_enabled: bool,
+    /// 提示音效开关（settings 键 `sound_enabled`，默认开启）。
+    pub(crate) sound_enabled: bool,
+    /// 是否处于密码锁定状态（保护数据安全，解锁前不呈现数据与操作）。
+    pub(crate) locked: bool,
+    /// 锁定界面已输入的密码缓冲。
+    pub(crate) lock_input: String,
+    /// 锁定界面错误提示信息。
+    pub(crate) lock_error: Option<String>,
 }
 
 impl<'a> App<'a> {
@@ -405,6 +435,17 @@ impl<'a> App<'a> {
             settings_map.get("lunar_reminder").map(|s| s.as_str()),
             Some("0")
         );
+        // 密码保护模式：缺省视为关闭（settings 显式写 "1" 才开启）。
+        let password_enabled = matches!(
+            settings_map.get("password_enabled").map(|s| s.as_str()),
+            Some("1")
+        );
+        let locked = password_enabled && std::env::var("HORAE_UNLOCKED").is_err();
+        // 提示音效开关：缺省视为开启（settings 显式写 "0" 才关闭）。
+        let sound_enabled = !matches!(
+            settings_map.get("sound_enabled").map(|s| s.as_str()),
+            Some("0")
+        );
         // 农历卡片由 [`App::refresh`] 统一计算（构造末尾必跑一次），此处不重复算。
         let mut app = App {
             conn,
@@ -472,6 +513,11 @@ impl<'a> App<'a> {
             flash_mode,
             lunar_enabled,
             calendar_info: None,
+            password_enabled,
+            sound_enabled,
+            locked,
+            lock_input: String::new(),
+            lock_error: None,
         };
         app.refresh()?;
 
@@ -506,6 +552,13 @@ impl<'a> App<'a> {
     }
 
     pub(crate) fn check_notifications(&mut self) {
+        // 快速录入模式（以及各录入/编辑子模式）下保持纯净无干扰：
+        // 暂停检查与发送桌面通知、不弹窗到期提醒，避免打断用户的输入流与按键焦点。
+        // 待退出录入模式回到普通视图后，下一帧即可恢复正常检查。
+        if self.mode.is_input() {
+            return;
+        }
+
         let now_ms = horae_core::time::now_ms();
         // Bug4 修复：每日摘要检查每 60s 至多一次，避免每帧都读 notify.json。
         if now_ms - self.last_notify_check_ms >= 60_000 {
@@ -520,6 +573,7 @@ impl<'a> App<'a> {
             horae_core::notify::desktop_notify(&summary, &body, event.urgency(), event.icon());
 
             if let horae_core::notification::NotificationEvent::Now { id, title, .. } = event {
+                horae_core::sound::play(horae_core::sound::SoundKind::TaskDue);
                 self.popup = Some(Popup::TaskDueNow(id, title));
                 self.needs_clear = true; // force redraw to show popup
             }

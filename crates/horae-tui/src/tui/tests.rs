@@ -2729,12 +2729,12 @@ fn module_toggle_popup_navigates_and_persists() {
     let reloaded = horae_core::repo::modules::ModuleVisibility::load(app.conn);
     assert!(!reloaded.splash);
 
-    // j 向下循环导航（0 → 1），k 反向且在 0 处回绕到 13（最后一项：农历与节气提醒）
+    // j 向下循环导航（0 → 1），k 反向且在 0 处回绕到 14（最后一项：密码保护模式）
     app.handle_key(key('j')).unwrap();
     assert_eq!(app.popup, Some(crate::tui::app::Popup::ModuleToggles(1)));
     app.popup = Some(crate::tui::app::Popup::ModuleToggles(0));
     app.handle_key(key('k')).unwrap();
-    assert_eq!(app.popup, Some(crate::tui::app::Popup::ModuleToggles(13)));
+    assert_eq!(app.popup, Some(crate::tui::app::Popup::ModuleToggles(14)));
 
     // Esc 关闭弹层
     app.handle_key(kc(KeyCode::Esc)).unwrap();
@@ -5278,4 +5278,299 @@ fn capture_preview_recurring_with_time_shows_cycle_and_first_due() {
         .join("\n");
     assert!(rendered_notime.contains("循环: *m[2,3] → "));
     assert!(!rendered_notime.contains("(首期: "));
+}
+
+#[test]
+fn password_mode_lock_screen_unlock_and_relock() {
+    horae_core::repo::state::set_test_override();
+    let mut conn = Connection::open(":memory:").unwrap();
+    migrate::run(&mut conn).unwrap();
+    seed(&conn);
+
+    // 预先设置密码并启用保护
+    horae_core::password::set_password(&conn, "secret_456").unwrap();
+    assert!(horae_core::password::is_password_enabled(&conn).unwrap());
+
+    // 启动 App：应处于锁定状态
+    let mut app = app_normal(&conn);
+    assert!(app.password_enabled, "检测到密码保护已开启");
+    assert!(app.locked, "启动即进入锁定状态");
+    assert!(app.lock_input.is_empty());
+    assert!(app.lock_error.is_none());
+
+    // 输入错误密码并回车
+    for c in "wrong_pwd".chars() {
+        app.handle_key(key(c)).unwrap();
+    }
+    app.handle_key(kc(KeyCode::Enter)).unwrap();
+    assert!(app.locked, "错误密码不能解锁");
+    assert!(app.lock_error.is_some(), "应提示密码错误");
+    assert!(app.lock_input.is_empty(), "输入框应被重置清空");
+
+    // 输入正确密码并回车
+    for c in "secret_456".chars() {
+        app.handle_key(key(c)).unwrap();
+    }
+    app.handle_key(kc(KeyCode::Enter)).unwrap();
+    assert!(!app.locked, "正确密码成功解锁");
+    assert!(app.lock_error.is_none());
+
+    // 在 Normal 模式下按 Shift+L：重新锁定
+    app.handle_key(key('L')).unwrap();
+    assert!(app.locked, "Shift+L 可即时重新锁定屏幕");
+
+    // 按 Esc 退出
+    app.handle_key(kc(KeyCode::Esc)).unwrap();
+    assert!(app.should_quit, "在锁定界面按 Esc 触发退出应用");
+}
+
+#[test]
+fn password_mode_toggle_via_f7_popup_persists() {
+    horae_core::repo::state::set_test_override();
+    let mut conn = Connection::open(":memory:").unwrap();
+    migrate::run(&mut conn).unwrap();
+    seed(&conn);
+
+    let mut app = app_normal(&conn);
+    assert!(!app.password_enabled, "默认密码保护模式关闭");
+    assert!(!app.locked, "默认未锁定");
+
+    // 打开 F7 弹层并选择第 15 项（下标 14：密码保护模式）
+    app.handle_key(kc(KeyCode::F(7))).unwrap();
+    app.popup = Some(crate::tui::app::Popup::ModuleToggles(14));
+
+    // 按空格：打开设置密码弹窗
+    app.handle_key(key(' ')).unwrap();
+    assert!(matches!(
+        app.popup,
+        Some(crate::tui::app::Popup::PasswordSet {
+            is_confirm: false,
+            ..
+        })
+    ));
+
+    // 输入第一遍密码
+    for c in "my_new_pwd".chars() {
+        app.handle_key(key(c)).unwrap();
+    }
+    app.handle_key(kc(KeyCode::Enter)).unwrap();
+    // 进入确认密码步骤
+    assert!(matches!(
+        app.popup,
+        Some(crate::tui::app::Popup::PasswordSet {
+            is_confirm: true,
+            ..
+        })
+    ));
+
+    // 输入不一致密码：应提示错误并重置回第一步
+    for c in "diff_pwd".chars() {
+        app.handle_key(key(c)).unwrap();
+    }
+    app.handle_key(kc(KeyCode::Enter)).unwrap();
+    if let Some(crate::tui::app::Popup::PasswordSet {
+        is_confirm,
+        ref error,
+        ..
+    }) = app.popup
+    {
+        assert!(!is_confirm, "不一致密码返回第一步");
+        assert!(error.is_some(), "应提示不一致错误");
+    } else {
+        panic!("expected PasswordSet popup");
+    }
+
+    // 重新输入第一遍密码
+    for c in "correct_pwd".chars() {
+        app.handle_key(key(c)).unwrap();
+    }
+    app.handle_key(kc(KeyCode::Enter)).unwrap();
+
+    // 确认输入相同密码
+    for c in "correct_pwd".chars() {
+        app.handle_key(key(c)).unwrap();
+    }
+    app.handle_key(kc(KeyCode::Enter)).unwrap();
+
+    // 成功设置并开启
+    assert!(app.popup.is_none(), "设置完成后关闭弹层");
+    assert!(app.password_enabled, "密码保护模式已标记开启");
+    assert!(
+        horae_core::password::is_password_enabled(app.conn).unwrap(),
+        "已持久化到 DB"
+    );
+    assert!(horae_core::password::verify_password(app.conn, "correct_pwd").unwrap());
+
+    // 再次打开 F7 并空格：应进入关闭保护弹窗
+    app.handle_key(kc(KeyCode::F(7))).unwrap();
+    app.popup = Some(crate::tui::app::Popup::ModuleToggles(14));
+    app.handle_key(key(' ')).unwrap();
+    assert!(matches!(
+        app.popup,
+        Some(crate::tui::app::Popup::PasswordDisable { .. })
+    ));
+
+    // 输入错误密码关闭
+    for c in "wrong".chars() {
+        app.handle_key(key(c)).unwrap();
+    }
+    app.handle_key(kc(KeyCode::Enter)).unwrap();
+    assert!(app.password_enabled, "密码错误不能关闭保护");
+
+    // 输入正确密码关闭
+    for c in "correct_pwd".chars() {
+        app.handle_key(key(c)).unwrap();
+    }
+    app.handle_key(kc(KeyCode::Enter)).unwrap();
+    assert!(!app.password_enabled, "正确密码关闭成功");
+    assert!(
+        !horae_core::password::is_password_enabled(app.conn).unwrap(),
+        "DB 状态已关闭"
+    );
+}
+
+#[test]
+fn password_mode_settings_view_and_change_password() {
+    horae_core::repo::state::set_test_override();
+    let mut conn = Connection::open(":memory:").unwrap();
+    migrate::run(&mut conn).unwrap();
+    seed(&conn);
+
+    horae_core::password::set_password(&conn, "pass1").unwrap();
+    let mut app = app_normal(&conn);
+    app.locked = false; // 模拟已解锁会话
+
+    // 切换到 Settings 视图 (M)
+    app.handle_key(key('M')).unwrap();
+    assert_eq!(app.view, View::Settings);
+
+    // 在 Settings 视图按 p：进入关闭/修改密码弹层
+    app.handle_key(key('p')).unwrap();
+    assert!(matches!(
+        app.popup,
+        Some(crate::tui::app::Popup::PasswordDisable { .. })
+    ));
+
+    // 按 Tab 切换为修改密码模式
+    app.handle_key(kc(KeyCode::Tab)).unwrap();
+    assert!(matches!(
+        app.popup,
+        Some(crate::tui::app::Popup::PasswordChange { step: 0, .. })
+    ));
+
+    // 输入原密码 pass1
+    for c in "pass1".chars() {
+        app.handle_key(key(c)).unwrap();
+    }
+    app.handle_key(kc(KeyCode::Enter)).unwrap();
+    assert!(matches!(
+        app.popup,
+        Some(crate::tui::app::Popup::PasswordChange { step: 1, .. })
+    ));
+
+    // 输入新密码 pass2
+    for c in "pass2".chars() {
+        app.handle_key(key(c)).unwrap();
+    }
+    app.handle_key(kc(KeyCode::Enter)).unwrap();
+    assert!(matches!(
+        app.popup,
+        Some(crate::tui::app::Popup::PasswordChange { step: 2, .. })
+    ));
+
+    // 确认新密码 pass2
+    for c in "pass2".chars() {
+        app.handle_key(key(c)).unwrap();
+    }
+    app.handle_key(kc(KeyCode::Enter)).unwrap();
+
+    assert!(app.popup.is_none());
+    assert!(horae_core::password::verify_password(app.conn, "pass2").unwrap());
+    assert!(!horae_core::password::verify_password(app.conn, "pass1").unwrap());
+}
+
+#[test]
+fn quick_capture_mode_suppresses_notifications_until_exit() {
+    horae_core::repo::state::set_test_override();
+    let mut conn = Connection::open(":memory:").unwrap();
+    migrate::run(&mut conn).unwrap();
+    let mut app = app_normal(&conn);
+
+    let now = horae_core::time::now_ms();
+    tasks::create_capture(
+        &conn,
+        &CaptureInput {
+            title: "Due Task".into(),
+            status: task::Status::Next,
+            due_at: Some(now - 1000),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    // 处于快速录入模式下：不应受到任何打扰（无弹窗、不触发到期提醒）
+    app.mode = Mode::Capturing;
+    app.check_notifications();
+    assert!(
+        app.popup.is_none(),
+        "快速录入模式下不应弹出任务到期通知弹窗"
+    );
+
+    // 用户退出快速录入（例如按 Esc 回到普通列表模式）
+    app.handle_key(kc(KeyCode::Esc)).unwrap();
+    assert_eq!(app.mode, Mode::Normal);
+
+    // 退出快速录入模式回到普通视图：正常触发到期提醒
+    app.check_notifications();
+    assert!(
+        matches!(app.popup, Some(crate::tui::app::Popup::TaskDueNow(..))),
+        "退出快速录入模式后应正常触发到期提醒"
+    );
+}
+
+#[test]
+fn test_settings_view_sound_toggle_defaults_on_and_persists() {
+    horae_core::repo::state::set_test_override();
+    let mut conn = Connection::open(":memory:").unwrap();
+    migrate::run(&mut conn).unwrap();
+    let mut app = app_normal(&conn);
+
+    // 1. 默认状态：音效开启
+    assert!(app.sound_enabled, "默认情况下提示音效应开启");
+    assert_eq!(
+        horae_core::repo::settings::get(&conn, "sound_enabled").unwrap(),
+        None,
+        "未手动更改前 settings 表中应为 None"
+    );
+
+    // 2. 切到 Settings 视图
+    app.set_view(View::Settings);
+    assert_eq!(app.view, View::Settings);
+
+    // 3. 在 Settings 视图中按 b 切换音效开关 -> 关闭
+    app.handle_key(key('b')).unwrap();
+    assert!(!app.sound_enabled, "按 b 后音效应切换为关闭");
+    assert_eq!(
+        horae_core::repo::settings::get(&conn, "sound_enabled")
+            .unwrap()
+            .as_deref(),
+        Some("0"),
+        "关闭后 settings 表中应持久化为 0"
+    );
+
+    // 4. 再次按 b -> 重新开启
+    app.handle_key(key('b')).unwrap();
+    assert!(app.sound_enabled, "再次按 b 后音效应切换为开启");
+    assert_eq!(
+        horae_core::repo::settings::get(&conn, "sound_enabled")
+            .unwrap()
+            .as_deref(),
+        Some("1"),
+        "开启后 settings 表中应持久化为 1"
+    );
+
+    // 5. 重新启动 App 应尊重 settings 中的持久化设置 (若写 0 则重启后依然关闭)
+    horae_core::repo::settings::set(&conn, "sound_enabled", "0").unwrap();
+    let app2 = app_normal(&conn);
+    assert!(!app2.sound_enabled, "重启后应保持 settings 中的关闭状态");
 }

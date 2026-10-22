@@ -34,6 +34,44 @@ impl<'a> App<'a> {
             KeyCode::Char('s') => {
                 self.settings_set_default()?;
             }
+            KeyCode::Char('b') | KeyCode::Char('B') => {
+                self.sound_enabled = !self.sound_enabled;
+                let _ = horae_core::repo::settings::set(
+                    self.conn,
+                    "sound_enabled",
+                    if self.sound_enabled { "1" } else { "0" },
+                );
+                self.status_message = if self.sound_enabled {
+                    tr!(
+                        self.lang,
+                        "已开启提示音效 (默认)",
+                        "Sound effects enabled (default)"
+                    )
+                    .into()
+                } else {
+                    tr!(
+                        self.lang,
+                        "已关闭提示音效 (静音)",
+                        "Sound effects disabled (muted)"
+                    )
+                    .into()
+                };
+            }
+            KeyCode::Char('p') | KeyCode::Char('P') => {
+                if !self.password_enabled {
+                    self.popup = Some(crate::tui::app::Popup::PasswordSet {
+                        is_confirm: false,
+                        input: String::new(),
+                        first_pass: String::new(),
+                        error: None,
+                    });
+                } else {
+                    self.popup = Some(crate::tui::app::Popup::PasswordDisable {
+                        input: String::new(),
+                        error: None,
+                    });
+                }
+            }
             _ => return Ok(false),
         }
         Ok(true)

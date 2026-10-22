@@ -200,6 +200,7 @@ Toggles under `F7` in the TUI, persisted per database:
 | Flash mode | off | Enter saves and exits instead of returning to the list |
 | Zen capture | on | hide list chrome while typing |
 | Completion style | Reference | card vs. compact list with ghost text |
+| Password mode | off | require password authentication to open app or view data; press L in TUI to lock screen |
 
 ## Concepts
 
@@ -339,7 +340,7 @@ Running `horae` opens a three-pane layout: navigation on the left, the task list
 | `Ctrl+P` | syntax cheat sheet |
 | `Esc` / `q` | cancel / quit |
 
-In the Tags view, `c` creates a tag and `D` deletes one. In the Settings view, `n` creates a profile, `r` renames, `d` deletes, `s` sets the default.
+In the Tags view, `c` creates a tag and `D` deletes one. In the Settings view, `n` creates a profile, `r` renames, `d` deletes, `s` sets the default, `b` toggles sound effects, and `p` configures password protection.
 
 Today and Tomorrow are deliberately strict: both only contain `Next` and `Scheduled` tasks. Today is the union of overdue tasks and tasks whose window falls inside today; Tomorrow contains only tasks scheduled inside tomorrow's window, with no carry-over of unfinished work.
 

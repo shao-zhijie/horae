@@ -65,7 +65,7 @@ pub fn start(conn: &Connection, task_id: &str) -> Result<()> {
         task.title,
         state.config.work_mins
     );
-    notify(summary, &body);
+    notify_with_sound(summary, &body, crate::sound::SoundKind::FocusStart);
     Ok(())
 }
 
@@ -104,13 +104,14 @@ pub fn stop(conn: Option<&rusqlite::Connection>, completed: bool) -> anyhow::Res
     state.break_ended_at = None;
     pomodoro::save_state(&state)?;
     let lang = Lang::detect(conn);
-    notify(
+    notify_with_sound(
         tr!(lang, "⏹️ 专注已终止", "⏹️ Focus Stopped"),
         tr!(
             lang,
             "番茄钟与专注模式已停止",
             "Pomodoro and focus mode have been stopped"
         ),
+        crate::sound::SoundKind::FocusStop,
     );
     Ok(())
 }
@@ -308,7 +309,7 @@ pub(crate) fn advance_phase(
                         state.config.long_break_mins
                     )
                 };
-                notify(summary, &body);
+                notify_with_sound(summary, &body, crate::sound::SoundKind::BreakStart);
             } else {
                 state.phase = Phase::ShortBreak;
                 let short_break_ms = (state.config.short_break_mins as i64) * 60 * 1000;
@@ -335,7 +336,7 @@ pub(crate) fn advance_phase(
                         state.config.short_break_mins
                     )
                 };
-                notify(summary, &body);
+                notify_with_sound(summary, &body, crate::sound::SoundKind::BreakStart);
             }
         }
         Phase::ShortBreak | Phase::LongBreak => {
@@ -343,13 +344,14 @@ pub(crate) fn advance_phase(
             // 盖章“休息刚结束”：横幅只在此后短窗口内提示，不整天常驻
             state.break_ended_at = Some(now);
             let lang = Lang::detect(Some(conn));
-            notify(
+            notify_with_sound(
                 tr!(lang, "⏰ 休息结束！战报结清", "⏰ Break Ended!"),
                 tr!(
                     lang,
                     "休息已完成！按 [Space / P] 再接再厉开启新一轮，或按 [S] 结束专注。💪",
                     "Break is complete! Press [Space / P] to start next round, or [S] to finish focus. 💪"
                 ),
+                crate::sound::SoundKind::BreakEnd,
             );
         }
         Phase::Idle => {}
@@ -358,62 +360,15 @@ pub(crate) fn advance_phase(
 }
 
 pub fn notify(summary: &str, body: &str) {
+    notify_with_sound(summary, body, crate::sound::SoundKind::BreakStart);
+}
+
+pub fn notify_with_sound(summary: &str, body: &str, sound: crate::sound::SoundKind) {
     // 桌面图形通知（原生走 D-Bus 发送，避免 notify-send 命令行暴露敏感任务标题）
     crate::notify::desktop(summary, body);
 
-    // 音效提醒：在独立线程中异步播放，防止音频服务卡顿时阻塞 daemon 计时
-    let sound_paths = [
-        "/usr/share/sounds/freedesktop/stereo/complete.oga",
-        "/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga",
-        "/usr/share/sounds/freedesktop/stereo/service-login.oga",
-        "/usr/share/sounds/alsa/Front_Center.wav",
-    ];
-
-    let playable: Vec<String> = sound_paths
-        .iter()
-        .filter(|p| std::path::Path::new(p).exists())
-        .map(|p| p.to_string())
-        .collect();
-
-    if playable.is_empty() {
-        print!("\x07");
-        let _ = std::io::Write::flush(&mut std::io::stdout());
-        return;
-    }
-
-    thread::spawn(move || {
-        let mut played = false;
-        for path in &playable {
-            if StdCommand::new("paplay")
-                .arg(path)
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false)
-                || StdCommand::new("pw-play")
-                    .arg(path)
-                    .status()
-                    .map(|s| s.success())
-                    .unwrap_or(false)
-                || StdCommand::new("aplay")
-                    .arg(path)
-                    .status()
-                    .map(|s| s.success())
-                    .unwrap_or(false)
-                || StdCommand::new("mpv")
-                    .args(["--no-terminal", path])
-                    .status()
-                    .map(|s| s.success())
-                    .unwrap_or(false)
-            {
-                played = true;
-                break;
-            }
-        }
-        if !played {
-            print!("\x07");
-            let _ = std::io::Write::flush(&mut std::io::stdout());
-        }
-    });
+    // 播放对应语义的高品质音效（异步执行，不阻塞 daemon 计时）
+    crate::sound::play(sound);
 }
 
 #[cfg(test)]

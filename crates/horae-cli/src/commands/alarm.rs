@@ -176,7 +176,11 @@ pub fn waybar(slot: Option<usize>, limit: Option<usize>, emit_all: bool) -> Resu
             if let Ok(t) = tasks::get(&conn, &id) {
                 state.rung.push(occ_key(&id, d));
                 let (summary, body) = format_alarm_message(&t, d, now, lang);
-                crate::commands::pomo::notify(&summary, &body);
+                crate::commands::pomo::notify_with_sound(
+                    &summary,
+                    &body,
+                    horae_core::sound::SoundKind::TaskDue,
+                );
                 dirty = true;
             }
         }

@@ -23,6 +23,7 @@ use ratatui::{
 
 pub(crate) trait AppRender {
     fn render(&mut self, f: &mut Frame);
+    fn render_lock_screen(&mut self, f: &mut Frame, size: Rect);
     fn render_focus_mode(&mut self, f: &mut Frame, area: Rect);
     fn render_help_drawer(&self, f: &mut Frame, area: Rect);
     fn render_syntax_drawer(&self, f: &mut Frame, area: Rect);
@@ -39,6 +40,12 @@ pub(crate) trait AppRender {
 impl<'a> AppRender for App<'a> {
     fn render(&mut self, f: &mut ratatui::Frame) {
         let size = f.area();
+
+        // ── 密码锁定模式：全屏接管，保护数据安全 ──
+        if self.locked {
+            self.render_lock_screen(f, size);
+            return;
+        }
 
         // ── 番茄专注模式：全屏接管 ──
         {
@@ -183,6 +190,109 @@ impl<'a> AppRender for App<'a> {
 
     fn render_focus_mode(&mut self, f: &mut Frame, area: Rect) {
         self.render_focus_view(f, area);
+    }
+
+    fn render_lock_screen(&mut self, f: &mut Frame, size: Rect) {
+        f.render_widget(ratatui::widgets::Clear, size);
+        let bg_block = Block::default().style(Style::default().bg(self.theme.bg));
+        f.render_widget(bg_block, size);
+
+        let area = self.centered_rect(54, 13, size);
+        f.render_widget(ratatui::widgets::Clear, area);
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_set(border::ROUNDED)
+            .border_style(Style::default().fg(self.theme.accent))
+            .padding(ratatui::widgets::Padding::horizontal(2))
+            .title(tr!(
+                self.lang,
+                " 🔒 密码保护模式 · 已锁定 ",
+                " 🔒 Password Protection · Locked "
+            ));
+
+        let masked_input: String = "● ".repeat(self.lock_input.chars().count());
+        let is_empty = masked_input.is_empty();
+        let mut lines = vec![
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                tr!(
+                    self.lang,
+                    "请输入密码以解锁 horae：",
+                    "Please enter password to unlock horae:"
+                ),
+                Style::default()
+                    .fg(self.theme.fg)
+                    .add_modifier(Modifier::BOLD),
+            )]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled(" [ ", Style::default().fg(self.theme.accent)),
+                Span::styled(
+                    if is_empty {
+                        tr!(self.lang, "输入密码...", "enter password...").to_string()
+                    } else {
+                        masked_input
+                    },
+                    if is_empty {
+                        Style::default().fg(self.theme.text_dim)
+                    } else {
+                        Style::default()
+                            .fg(self.theme.fg)
+                            .add_modifier(Modifier::BOLD)
+                    },
+                ),
+                Span::styled(" ]", Style::default().fg(self.theme.accent)),
+            ]),
+            Line::from(""),
+        ];
+
+        if let Some(ref err) = self.lock_error {
+            lines.push(Line::from(vec![Span::styled(
+                format!(" ✗ {}", err),
+                Style::default().fg(self.theme.text_urgent),
+            )]));
+        } else {
+            lines.push(Line::from(""));
+        }
+
+        lines.push(Line::from(vec![
+            Span::styled(
+                " [Enter] ",
+                Style::default()
+                    .fg(self.theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                tr!(self.lang, "解锁", "Unlock"),
+                Style::default().fg(self.theme.text_dim),
+            ),
+            Span::styled(
+                "  •  [Esc] ",
+                Style::default()
+                    .fg(self.theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                tr!(self.lang, "退出", "Exit"),
+                Style::default().fg(self.theme.text_dim),
+            ),
+            Span::styled(
+                "  •  [Ctrl+U] ",
+                Style::default()
+                    .fg(self.theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                tr!(self.lang, "清空", "Clear"),
+                Style::default().fg(self.theme.text_dim),
+            ),
+        ]));
+
+        let p = Paragraph::new(lines)
+            .block(block)
+            .alignment(Alignment::Center);
+        f.render_widget(p, area);
     }
 
     fn render_help_drawer(&self, f: &mut ratatui::Frame, area: ratatui::layout::Rect) {
@@ -836,6 +946,152 @@ impl<'a> AppRender for App<'a> {
         } else {
             self.theme.text_dim
         };
+
+        if self.view == View::Settings {
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_set(border::ROUNDED)
+                .padding(ratatui::widgets::Padding::horizontal(1))
+                .border_style(Style::default().fg(border_color))
+                .title(tr!(self.lang, " 设置与安全 ", " Settings & Security "));
+
+            let selected_profile = self.items.get(self.selected).map(|r| r.title.clone());
+            let mut lines = vec![Line::from(vec![
+                Span::styled(
+                    tr!(self.lang, "当前配置: ", "Current Profile: "),
+                    Style::default()
+                        .fg(self.theme.text_dim)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    self.profile_name.clone(),
+                    Style::default()
+                        .fg(self.theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ])];
+
+            if let Some(ref prof) = selected_profile {
+                if prof != &self.profile_name {
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            tr!(self.lang, "选中配置: ", "Selected Profile: "),
+                            Style::default().fg(self.theme.text_dim),
+                        ),
+                        Span::styled(prof.clone(), Style::default().fg(self.theme.fg)),
+                    ]));
+                }
+            }
+
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![Span::styled(
+                tr!(self.lang, "数据安全保护", "Data Security"),
+                Style::default()
+                    .fg(self.theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            )]));
+            lines.push(Line::from(vec![
+                Span::styled(
+                    tr!(self.lang, "• 密码保护模式: ", "• Password Mode: "),
+                    Style::default().fg(self.theme.text_dim),
+                ),
+                if self.password_enabled {
+                    Span::styled(
+                        tr!(self.lang, "已启用 (受保护)", "Enabled (Protected)"),
+                        Style::default()
+                            .fg(self.theme.text_success)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                } else {
+                    Span::styled(
+                        tr!(self.lang, "未启用 (默认)", "Disabled (Default)"),
+                        Style::default().fg(self.theme.text_dim),
+                    )
+                },
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled(
+                    tr!(self.lang, "• 提示音效: ", "• Sound Effects: "),
+                    Style::default().fg(self.theme.text_dim),
+                ),
+                if self.sound_enabled {
+                    Span::styled(
+                        tr!(self.lang, "已开启 (默认)", "Enabled (Default)"),
+                        Style::default()
+                            .fg(self.theme.text_success)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                } else {
+                    Span::styled(
+                        tr!(self.lang, "已关闭 (静音)", "Disabled (Muted)"),
+                        Style::default().fg(self.theme.text_dim),
+                    )
+                },
+            ]));
+
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![Span::styled(
+                tr!(self.lang, "快捷操作：", "Actions:"),
+                Style::default()
+                    .fg(self.theme.text_dim)
+                    .add_modifier(Modifier::BOLD),
+            )]));
+            lines.push(Line::from(vec![
+                Span::styled(" [b] ", Style::default().fg(self.theme.accent)),
+                Span::styled(
+                    if self.sound_enabled {
+                        tr!(self.lang, "关闭音效提示", "Disable Sound Effects")
+                    } else {
+                        tr!(self.lang, "开启音效提示", "Enable Sound Effects")
+                    },
+                    Style::default().fg(self.theme.fg),
+                ),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled(" [p] ", Style::default().fg(self.theme.accent)),
+                Span::styled(
+                    if self.password_enabled {
+                        tr!(self.lang, "关闭/修改密码", "Disable/Change Password")
+                    } else {
+                        tr!(self.lang, "开启密码保护模式", "Enable Password Mode")
+                    },
+                    Style::default().fg(self.theme.fg),
+                ),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled(" [n] ", Style::default().fg(self.theme.accent)),
+                Span::styled(
+                    tr!(self.lang, "新建配置", "New Profile"),
+                    Style::default().fg(self.theme.fg),
+                ),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled(" [r] ", Style::default().fg(self.theme.accent)),
+                Span::styled(
+                    tr!(self.lang, "重命名配置", "Rename Profile"),
+                    Style::default().fg(self.theme.fg),
+                ),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled(" [d] ", Style::default().fg(self.theme.accent)),
+                Span::styled(
+                    tr!(self.lang, "删除配置", "Delete Profile"),
+                    Style::default().fg(self.theme.fg),
+                ),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled(" [s] ", Style::default().fg(self.theme.accent)),
+                Span::styled(
+                    tr!(self.lang, "设为默认配置", "Set as Default"),
+                    Style::default().fg(self.theme.fg),
+                ),
+            ]));
+
+            let para = Paragraph::new(lines).block(block);
+            f.render_widget(para, area);
+            return;
+        }
+
         let block = Block::default()
             .borders(Borders::ALL)
             .border_set(border::ROUNDED)

@@ -10,9 +10,11 @@ pub mod notification;
 pub mod notify;
 pub mod ntfy;
 pub mod parser;
+pub mod password;
 pub mod pomo;
 pub mod repo;
 pub mod schedule;
+pub mod sound;
 pub mod time;
 
 #[cfg(any(test, feature = "test-util"))]

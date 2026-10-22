@@ -95,7 +95,7 @@ impl<'a> App<'a> {
         let Some(ref popup) = self.popup else { return };
         match popup {
             crate::tui::app::Popup::ModuleToggles(idx) => {
-                let area = self.centered_rect(44, 20, size);
+                let area = self.centered_rect(46, 21, size);
                 f.render_widget(ratatui::widgets::Clear, area);
                 let block = Block::default()
                     .title(tr!(self.lang, " 模块显示设置 ", " Module Visibility "))
@@ -182,6 +182,14 @@ impl<'a> App<'a> {
                             "Lunar & holiday reminders (Lunar)"
                         ),
                     ),
+                    (
+                        self.password_enabled,
+                        tr!(
+                            self.lang,
+                            "密码保护模式 (Password)",
+                            "Password protection (Password)"
+                        ),
+                    ),
                 ];
                 for (i, (enabled, name)) in opts.iter().enumerate() {
                     let checkbox = if *enabled { "[x]" } else { "[ ]" };
@@ -233,6 +241,230 @@ impl<'a> App<'a> {
                     .borders(Borders::ALL)
                     .border_set(border::ROUNDED)
                     .border_style(Style::default().fg(self.theme.text_urgent));
+                f.render_widget(
+                    Paragraph::new(lines)
+                        .block(block)
+                        .alignment(Alignment::Center),
+                    area,
+                );
+            }
+            crate::tui::app::Popup::PasswordSet {
+                is_confirm,
+                input,
+                error,
+                ..
+            } => {
+                let area = self.centered_rect(54, 11, size);
+                f.render_widget(ratatui::widgets::Clear, area);
+                let block = Block::default()
+                    .title(tr!(
+                        self.lang,
+                        " 🔐 设置密码保护 ",
+                        " 🔐 Set Password Protection "
+                    ))
+                    .borders(Borders::ALL)
+                    .border_set(border::ROUNDED)
+                    .border_style(Style::default().fg(self.theme.accent));
+
+                let prompt = if *is_confirm {
+                    tr!(
+                        self.lang,
+                        "请再次输入以确认新密码：",
+                        "Please confirm new password:"
+                    )
+                } else {
+                    tr!(self.lang, "请输入新密码：", "Please enter new password:")
+                };
+
+                let masked = "● ".repeat(input.chars().count());
+                let is_empty = masked.is_empty();
+                let mut lines = vec![
+                    Line::from(""),
+                    Line::from(Span::styled(prompt, Style::default().fg(self.theme.fg))),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled(" [ ", Style::default().fg(self.theme.accent)),
+                        Span::styled(
+                            if is_empty {
+                                tr!(self.lang, "输入密码...", "enter password...").to_string()
+                            } else {
+                                masked
+                            },
+                            if is_empty {
+                                Style::default().fg(self.theme.text_dim)
+                            } else {
+                                Style::default()
+                                    .fg(self.theme.fg)
+                                    .add_modifier(Modifier::BOLD)
+                            },
+                        ),
+                        Span::styled(" ]", Style::default().fg(self.theme.accent)),
+                    ]),
+                    Line::from(""),
+                ];
+
+                if let Some(err) = error {
+                    lines.push(Line::from(Span::styled(
+                        format!(" ✗ {}", err),
+                        Style::default().fg(self.theme.text_urgent),
+                    )));
+                } else {
+                    lines.push(Line::from(""));
+                }
+
+                lines.push(Line::from(Span::styled(
+                    tr!(
+                        self.lang,
+                        " [Enter] 下一步/确认  •  [Esc] 取消 ",
+                        " [Enter] Next/Confirm  •  [Esc] Cancel "
+                    ),
+                    Style::default().fg(self.theme.text_dim),
+                )));
+
+                f.render_widget(
+                    Paragraph::new(lines)
+                        .block(block)
+                        .alignment(Alignment::Center),
+                    area,
+                );
+            }
+            crate::tui::app::Popup::PasswordDisable { input, error } => {
+                let area = self.centered_rect(54, 11, size);
+                f.render_widget(ratatui::widgets::Clear, area);
+                let block = Block::default()
+                    .title(tr!(
+                        self.lang,
+                        " 🔓 关闭密码保护 ",
+                        " 🔓 Disable Password Protection "
+                    ))
+                    .borders(Borders::ALL)
+                    .border_set(border::ROUNDED)
+                    .border_style(Style::default().fg(self.theme.accent));
+
+                let prompt = tr!(
+                    self.lang,
+                    "请输入当前密码以关闭保护：",
+                    "Enter current password to disable:"
+                );
+
+                let masked = "● ".repeat(input.chars().count());
+                let is_empty = masked.is_empty();
+                let mut lines = vec![
+                    Line::from(""),
+                    Line::from(Span::styled(prompt, Style::default().fg(self.theme.fg))),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled(" [ ", Style::default().fg(self.theme.accent)),
+                        Span::styled(
+                            if is_empty {
+                                tr!(self.lang, "输入密码...", "enter password...").to_string()
+                            } else {
+                                masked
+                            },
+                            if is_empty {
+                                Style::default().fg(self.theme.text_dim)
+                            } else {
+                                Style::default()
+                                    .fg(self.theme.fg)
+                                    .add_modifier(Modifier::BOLD)
+                            },
+                        ),
+                        Span::styled(" ]", Style::default().fg(self.theme.accent)),
+                    ]),
+                    Line::from(""),
+                ];
+
+                if let Some(err) = error {
+                    lines.push(Line::from(Span::styled(
+                        format!(" ✗ {}", err),
+                        Style::default().fg(self.theme.text_urgent),
+                    )));
+                } else {
+                    lines.push(Line::from(""));
+                }
+
+                lines.push(Line::from(Span::styled(
+                    tr!(
+                        self.lang,
+                        " [Enter] 确认关闭  •  [Tab] 修改密码  •  [Esc] 取消 ",
+                        " [Enter] Confirm Disable  •  [Tab] Change Password  •  [Esc] Cancel "
+                    ),
+                    Style::default().fg(self.theme.text_dim),
+                )));
+
+                f.render_widget(
+                    Paragraph::new(lines)
+                        .block(block)
+                        .alignment(Alignment::Center),
+                    area,
+                );
+            }
+            crate::tui::app::Popup::PasswordChange {
+                step, input, error, ..
+            } => {
+                let area = self.centered_rect(54, 11, size);
+                f.render_widget(ratatui::widgets::Clear, area);
+                let block = Block::default()
+                    .title(tr!(self.lang, " 🔑 修改保护密码 ", " 🔑 Change Password "))
+                    .borders(Borders::ALL)
+                    .border_set(border::ROUNDED)
+                    .border_style(Style::default().fg(self.theme.accent));
+
+                let prompt = match *step {
+                    0 => tr!(self.lang, "请输入当前原密码：", "Enter current password:"),
+                    1 => tr!(self.lang, "请输入新密码：", "Enter new password:"),
+                    _ => tr!(
+                        self.lang,
+                        "请再次输入以确认新密码：",
+                        "Confirm new password:"
+                    ),
+                };
+
+                let masked = "● ".repeat(input.chars().count());
+                let is_empty = masked.is_empty();
+                let mut lines = vec![
+                    Line::from(""),
+                    Line::from(Span::styled(prompt, Style::default().fg(self.theme.fg))),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled(" [ ", Style::default().fg(self.theme.accent)),
+                        Span::styled(
+                            if is_empty {
+                                tr!(self.lang, "输入密码...", "enter password...").to_string()
+                            } else {
+                                masked
+                            },
+                            if is_empty {
+                                Style::default().fg(self.theme.text_dim)
+                            } else {
+                                Style::default()
+                                    .fg(self.theme.fg)
+                                    .add_modifier(Modifier::BOLD)
+                            },
+                        ),
+                        Span::styled(" ]", Style::default().fg(self.theme.accent)),
+                    ]),
+                    Line::from(""),
+                ];
+
+                if let Some(err) = error {
+                    lines.push(Line::from(Span::styled(
+                        format!(" ✗ {}", err),
+                        Style::default().fg(self.theme.text_urgent),
+                    )));
+                } else {
+                    lines.push(Line::from(""));
+                }
+
+                lines.push(Line::from(Span::styled(
+                    tr!(
+                        self.lang,
+                        " [Enter] 下一步/确认  •  [Esc] 取消 ",
+                        " [Enter] Next/Confirm  •  [Esc] Cancel "
+                    ),
+                    Style::default().fg(self.theme.text_dim),
+                )));
+
                 f.render_widget(
                     Paragraph::new(lines)
                         .block(block)

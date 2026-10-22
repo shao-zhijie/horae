@@ -14,10 +14,12 @@ mod log;
 mod modify;
 pub use horae_core::notify;
 mod ntfy;
+pub mod password;
 pub use horae_core::pomo;
 pub mod profile;
 mod review;
 mod show;
+pub mod sound;
 pub mod stats;
 mod status;
 mod tagging;
@@ -198,6 +200,8 @@ fn run_inner(
         ),
         Command::Export { file } => backup::run_export(conn, file.as_deref()),
         Command::Import { file, replace } => backup::run_import(conn, &file, replace),
+        Command::Sound { action, name } => sound::run(conn, action.as_deref(), name.as_deref()),
+        Command::Password { action } => password::run(conn, action),
         Command::Stats => stats::run(conn),
         Command::Ntfy { action } => ntfy::run(&action, profile),
         Command::Feishu { action } => feishu::run(conn, action, profile),

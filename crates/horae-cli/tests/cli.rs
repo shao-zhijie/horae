@@ -647,3 +647,157 @@ fn flash_and_normal_cli_flags_and_subcommands() {
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("cannot be used with") || err.contains("conflicts with"));
 }
+
+#[test]
+fn password_protection_cli_lifecycle() {
+    let env = env();
+
+    // 1. 默认状态：密码保护关闭
+    let out = env.cmd().args(["password", "status"]).output().unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("DISABLED"));
+
+    // 2. 启用密码保护
+    let out = env
+        .cmd()
+        .args(["password", "enable", "--password", "my_secret_99"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    // 状态变为启用
+    let out = env.cmd().args(["password", "status"]).output().unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("ENABLED"));
+
+    // 3. 在非交互式环境下，未提供密码直接运行业务命令会失败
+    let out = env.cmd().args(["list"]).output().unwrap();
+    assert!(!out.status.success(), "未提供密码应被阻断");
+
+    // 4. 提供错误密码失败
+    let out = env
+        .cmd()
+        .args(["--password", "wrong", "list"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "错误密码应报错");
+
+    // 5. 提供正确命令行密码成功
+    let out = env
+        .cmd()
+        .args(["--password", "my_secret_99", "capture", "secret task"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "正确密码参数允许捕获");
+
+    // 6. 通过 HORAE_PASSWORD 环境变量认证成功
+    let mut cmd = env.cmd();
+    cmd.env("HORAE_PASSWORD", "my_secret_99");
+    cmd.args(["list"]);
+    let out = cmd.output().unwrap();
+    assert!(
+        out.status.success(),
+        "HORAE_PASSWORD 环境变量允许正常列出任务"
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("secret task"));
+
+    // 7. 修改密码
+    let out = env
+        .cmd()
+        .args([
+            "password",
+            "change",
+            "--old-password",
+            "wrong",
+            "--new-password",
+            "new_secret_100",
+        ])
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "旧密码错误应修改失败");
+
+    let out = env
+        .cmd()
+        .args([
+            "password",
+            "change",
+            "--old-password",
+            "my_secret_99",
+            "--new-password",
+            "new_secret_100",
+        ])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "旧密码正确应修改成功");
+
+    // 验证新密码有效，旧密码失效
+    let out = env
+        .cmd()
+        .args(["--password", "my_secret_99", "list"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+
+    let out = env
+        .cmd()
+        .args(["--password", "new_secret_100", "list"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    // 8. 关闭密码保护
+    let out = env
+        .cmd()
+        .args(["password", "disable", "--password", "wrong"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+
+    let out = env
+        .cmd()
+        .args(["password", "disable", "--password", "new_secret_100"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "正确密码关闭成功");
+
+    // 9. 关闭后免密码运行命令
+    let out = env.cmd().args(["list"]).output().unwrap();
+    assert!(out.status.success(), "密码保护关闭后无密码直接运行");
+}
+
+#[test]
+fn sound_command_status_toggle_and_persistence() {
+    let env = env();
+
+    // 1. 默认状态：音效开启
+    let out = env.cmd().args(["sound", "status"]).output().unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("Enabled") || stdout.contains("已开启"));
+
+    // 2. 关闭音效
+    let out = env.cmd().args(["sound", "off"]).output().unwrap();
+    assert!(out.status.success());
+
+    // 3. 再次查看状态：已关闭
+    let out = env.cmd().args(["sound", "status"]).output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("Disabled") || stdout.contains("已关闭"));
+
+    // 4. 重新开启音效
+    let out = env.cmd().args(["sound", "on"]).output().unwrap();
+    assert!(out.status.success());
+    let out = env.cmd().args(["sound", "status"]).output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("Enabled") || stdout.contains("已开启"));
+
+    // 5. 切换 (toggle)
+    let out = env.cmd().args(["sound", "toggle"]).output().unwrap();
+    assert!(out.status.success());
+    let out = env.cmd().args(["sound", "status"]).output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("Disabled") || stdout.contains("已关闭"));
+}

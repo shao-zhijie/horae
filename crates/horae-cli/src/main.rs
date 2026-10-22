@@ -33,6 +33,39 @@ fn main() -> Result<()> {
         horae_tui::LaunchMode::Default
     };
     let conn = horae_core::db::conn::open(cli.profile.as_deref())?;
+
+    if horae_core::password::is_password_enabled(&conn)? {
+        let is_tui = matches!(
+            cli.command,
+            None | Some(cli::Command::Tui { .. }) | Some(cli::Command::Flash)
+        );
+        let cli_password = cli
+            .password
+            .or_else(|| std::env::var("HORAE_PASSWORD").ok());
+        if let Some(ref pass) = cli_password {
+            if horae_core::password::verify_password(&conn, pass)? {
+                std::env::set_var("HORAE_UNLOCKED", "1");
+            } else {
+                eprintln!("Error: Incorrect password for horae.");
+                std::process::exit(1);
+            }
+        } else if !is_tui && !matches!(cli.command, Some(cli::Command::Password { .. })) {
+            use std::io::IsTerminal;
+            if std::io::stdin().is_terminal() {
+                let pass = commands::password::prompt_password("Enter horae password: ")?;
+                if !horae_core::password::verify_password(&conn, &pass)? {
+                    eprintln!("Error: Incorrect password.");
+                    std::process::exit(1);
+                }
+            } else {
+                eprintln!(
+                    "Error: horae is password protected. Provide password via --password or HORAE_PASSWORD."
+                );
+                std::process::exit(1);
+            }
+        }
+    }
+
     commands::run_with_mode(
         cli.command.unwrap_or(cli::Command::Tui {
             flash: false,

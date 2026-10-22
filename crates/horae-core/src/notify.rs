@@ -200,6 +200,7 @@ pub fn completed_feedback(conn: &Connection) -> Result<()> {
         n
     );
     desktop_notify(summary, &body, "low", None);
+    crate::sound::play(crate::sound::SoundKind::TaskCompleted);
     Ok(())
 }
 

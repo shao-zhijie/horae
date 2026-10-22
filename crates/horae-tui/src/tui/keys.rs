@@ -410,6 +410,24 @@ pub(crate) const KEY_TABLE: &[KeyDef] = &[
         when: When::ViewSel(View::Settings),
         heat: 54,
     },
+    KeyDef {
+        keys: "p",
+        zh: "密码保护设置",
+        en: "password settings",
+        group: KeyGroup::Global,
+        status: false,
+        when: When::View(View::Settings),
+        heat: 52,
+    },
+    KeyDef {
+        keys: "b",
+        zh: "开关音效提示",
+        en: "toggle sound",
+        group: KeyGroup::Global,
+        status: false,
+        when: When::View(View::Settings),
+        heat: 50,
+    },
     // ── Task ──
     KeyDef {
         keys: "Enter",

@@ -138,6 +138,12 @@ fn zh_about(path: &str) -> Option<&'static str> {
         "profile rename" => "重命名配置集",
         "profile rm" => "从配置中删除配置集（其数据库文件保留）",
         "profile set-default" => "设置未指定 --profile 时使用的默认配置集",
+        "password" => "管理密码保护模式（开启、关闭、修改、状态）",
+        "password status" => "查看当前密码保护状态",
+        "password enable" => "开启密码保护模式并设置密码",
+        "password disable" => "关闭密码保护模式",
+        "password change" => "修改密码保护密码",
+        "sound" => "管理提示音效（开启、关闭、切换、状态、试听）",
         _ => return None,
     })
 }
@@ -197,6 +203,10 @@ fn zh_arg_help(path: &str, arg: &str) -> Option<&'static str> {
         ("horae", "lang") => {
             "帮助文本的输出语言：`en`（默认）或 `zh`（中文）。也可通过环境变量 `HORAE_LANG` 设置。"
         }
+        ("horae", "password") => "受保护数据库的密码（也可设置 HORAE_PASSWORD 环境变量）",
+        ("password", "password") => "密码（省略则进入交互式无回显输入）",
+        ("password", "old_password") => "原密码（省略则交互式输入）",
+        ("password", "new_password") => "新密码（省略则交互式输入）",
         (_, "flash") => "以闪念录入模式启动（开启即录入，回车确认录入即关闭）",
         (_, "normal") => "以正常模式启动（开启后正常进入主页面）",
         ("capture", "title") => "任务标题（可省略引号）",

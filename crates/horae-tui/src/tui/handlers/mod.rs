@@ -33,6 +33,10 @@ impl<'a> AppHandlers for App<'a> {
             return Ok(());
         }
 
+        if self.locked {
+            return self.handle_lock_screen_key(key);
+        }
+
         if let Some(popup) = self.popup.take() {
             match popup {
                 crate::tui::app::Popup::ModuleToggles(mut idx) => {
@@ -41,11 +45,11 @@ impl<'a> AppHandlers for App<'a> {
                             // close, implicitly handled because popup is taken and not put back
                         }
                         KeyCode::Char('j') | KeyCode::Down => {
-                            idx = (idx + 1) % 14;
+                            idx = (idx + 1) % 15;
                             self.popup = Some(crate::tui::app::Popup::ModuleToggles(idx));
                         }
                         KeyCode::Char('k') | KeyCode::Up => {
-                            idx = idx.checked_sub(1).unwrap_or(13);
+                            idx = idx.checked_sub(1).unwrap_or(14);
                             self.popup = Some(crate::tui::app::Popup::ModuleToggles(idx));
                         }
                         KeyCode::Char(' ') => {
@@ -176,6 +180,25 @@ impl<'a> AppHandlers for App<'a> {
                                         self.calendar_info = None;
                                     }
                                 }
+                                14 => {
+                                    // 密码保护模式设置：未开启则打开设置弹窗，已开启则打开关闭/修改弹窗。
+                                    if !self.password_enabled {
+                                        self.popup = Some(crate::tui::app::Popup::PasswordSet {
+                                            is_confirm: false,
+                                            input: String::new(),
+                                            first_pass: String::new(),
+                                            error: None,
+                                        });
+                                        return Ok(());
+                                    } else {
+                                        self.popup =
+                                            Some(crate::tui::app::Popup::PasswordDisable {
+                                                input: String::new(),
+                                                error: None,
+                                            });
+                                        return Ok(());
+                                    }
+                                }
                                 _ => {}
                             }
                             self.popup = Some(crate::tui::app::Popup::ModuleToggles(idx));
@@ -193,6 +216,42 @@ impl<'a> AppHandlers for App<'a> {
                 }
                 // 其余按键（含 Esc）直接关闭到期提醒：popup 已被 take 走。
                 crate::tui::app::Popup::TaskDueNow(_, _) => {}
+                crate::tui::app::Popup::PasswordSet {
+                    mut is_confirm,
+                    mut input,
+                    mut first_pass,
+                    mut error,
+                } => {
+                    self.handle_password_set_key(
+                        key,
+                        &mut is_confirm,
+                        &mut input,
+                        &mut first_pass,
+                        &mut error,
+                    )?;
+                }
+                crate::tui::app::Popup::PasswordDisable {
+                    mut input,
+                    mut error,
+                } => {
+                    self.handle_password_disable_key(key, &mut input, &mut error)?;
+                }
+                crate::tui::app::Popup::PasswordChange {
+                    mut step,
+                    mut old_pass,
+                    mut new_pass,
+                    mut input,
+                    mut error,
+                } => {
+                    self.handle_password_change_key(
+                        key,
+                        &mut step,
+                        &mut old_pass,
+                        &mut new_pass,
+                        &mut input,
+                        &mut error,
+                    )?;
+                }
             }
             return Ok(());
         }
@@ -537,6 +596,280 @@ impl<'a> AppHandlers for App<'a> {
             self.visual_start_idx = None;
         }
         self.reload()?;
+        Ok(())
+    }
+}
+
+impl<'a> App<'a> {
+    pub(super) fn handle_lock_screen_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            KeyCode::Enter => {
+                if horae_core::password::verify_password(self.conn, &self.lock_input)? {
+                    self.locked = false;
+                    self.lock_input.clear();
+                    self.lock_error = None;
+                    self.status_message = tr!(self.lang, "已解锁", "Unlocked").to_string();
+                    let _ = self.reload();
+                } else {
+                    self.lock_input.clear();
+                    self.lock_error = Some(
+                        tr!(
+                            self.lang,
+                            "密码错误，请重试",
+                            "Incorrect password, please try again"
+                        )
+                        .to_string(),
+                    );
+                }
+            }
+            KeyCode::Esc | KeyCode::Char('q')
+                if key.code == KeyCode::Esc || key.code == KeyCode::Char('q') =>
+            {
+                self.should_quit = true;
+            }
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.should_quit = true;
+            }
+            KeyCode::Backspace => {
+                self.lock_input.pop();
+                self.lock_error = None;
+            }
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.lock_input.clear();
+                self.lock_error = None;
+            }
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.lock_input.push(c);
+                self.lock_error = None;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn handle_password_set_key(
+        &mut self,
+        key: KeyEvent,
+        is_confirm: &mut bool,
+        input: &mut String,
+        first_pass: &mut String,
+        error: &mut Option<String>,
+    ) -> Result<()> {
+        match key.code {
+            KeyCode::Esc => {
+                return Ok(());
+            }
+            KeyCode::Backspace => {
+                input.pop();
+                *error = None;
+            }
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                input.clear();
+                *error = None;
+            }
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                input.push(c);
+                *error = None;
+            }
+            KeyCode::Enter => {
+                if !*is_confirm {
+                    if input.trim().is_empty() {
+                        *error = Some(
+                            tr!(self.lang, "密码不能为空", "Password cannot be empty").to_string(),
+                        );
+                    } else {
+                        *first_pass = input.clone();
+                        input.clear();
+                        *is_confirm = true;
+                        *error = None;
+                    }
+                } else if input == first_pass {
+                    horae_core::password::set_password(self.conn, input)?;
+                    self.password_enabled = true;
+                    self.status_message = tr!(
+                        self.lang,
+                        "密码保护模式已开启",
+                        "Password protection enabled"
+                    )
+                    .to_string();
+                    let _ = self.reload();
+                    return Ok(());
+                } else {
+                    *error = Some(
+                        tr!(
+                            self.lang,
+                            "两次输入的密码不一致，请重试",
+                            "Passwords do not match, please try again"
+                        )
+                        .to_string(),
+                    );
+                    *is_confirm = false;
+                    input.clear();
+                    first_pass.clear();
+                }
+            }
+            _ => {}
+        }
+        self.popup = Some(crate::tui::app::Popup::PasswordSet {
+            is_confirm: *is_confirm,
+            input: input.clone(),
+            first_pass: first_pass.clone(),
+            error: error.clone(),
+        });
+        Ok(())
+    }
+
+    fn handle_password_disable_key(
+        &mut self,
+        key: KeyEvent,
+        input: &mut String,
+        error: &mut Option<String>,
+    ) -> Result<()> {
+        match key.code {
+            KeyCode::Esc => return Ok(()),
+            KeyCode::Tab => {
+                self.popup = Some(crate::tui::app::Popup::PasswordChange {
+                    step: 0,
+                    old_pass: String::new(),
+                    new_pass: String::new(),
+                    input: String::new(),
+                    error: None,
+                });
+                return Ok(());
+            }
+            KeyCode::Backspace => {
+                input.pop();
+                *error = None;
+            }
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                input.clear();
+                *error = None;
+            }
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                input.push(c);
+                *error = None;
+            }
+            KeyCode::Enter => match horae_core::password::verify_password(self.conn, input) {
+                Ok(true) => {
+                    horae_core::password::disable_password(self.conn)?;
+                    self.password_enabled = false;
+                    self.status_message = tr!(
+                        self.lang,
+                        "密码保护模式已关闭",
+                        "Password protection disabled"
+                    )
+                    .to_string();
+                    let _ = self.reload();
+                    return Ok(());
+                }
+                _ => {
+                    input.clear();
+                    *error = Some(
+                        tr!(
+                            self.lang,
+                            "密码错误，无法关闭",
+                            "Incorrect password, cannot disable"
+                        )
+                        .to_string(),
+                    );
+                }
+            },
+            _ => {}
+        }
+        self.popup = Some(crate::tui::app::Popup::PasswordDisable {
+            input: input.clone(),
+            error: error.clone(),
+        });
+        Ok(())
+    }
+
+    fn handle_password_change_key(
+        &mut self,
+        key: KeyEvent,
+        step: &mut u8,
+        old_pass: &mut String,
+        new_pass: &mut String,
+        input: &mut String,
+        error: &mut Option<String>,
+    ) -> Result<()> {
+        match key.code {
+            KeyCode::Esc => return Ok(()),
+            KeyCode::Backspace => {
+                input.pop();
+                *error = None;
+            }
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                input.clear();
+                *error = None;
+            }
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                input.push(c);
+                *error = None;
+            }
+            KeyCode::Enter => match *step {
+                0 => match horae_core::password::verify_password(self.conn, input) {
+                    Ok(true) => {
+                        *old_pass = input.clone();
+                        input.clear();
+                        *step = 1;
+                        *error = None;
+                    }
+                    _ => {
+                        input.clear();
+                        *error = Some(
+                            tr!(self.lang, "原密码错误", "Incorrect original password").to_string(),
+                        );
+                    }
+                },
+                1 => {
+                    if input.trim().is_empty() {
+                        *error = Some(
+                            tr!(self.lang, "新密码不能为空", "New password cannot be empty")
+                                .to_string(),
+                        );
+                    } else {
+                        *new_pass = input.clone();
+                        input.clear();
+                        *step = 2;
+                        *error = None;
+                    }
+                }
+                _ => {
+                    if input == new_pass {
+                        horae_core::password::set_password(self.conn, input)?;
+                        self.password_enabled = true;
+                        self.status_message = tr!(
+                            self.lang,
+                            "密码已修改并更新",
+                            "Password updated successfully"
+                        )
+                        .to_string();
+                        let _ = self.reload();
+                        return Ok(());
+                    } else {
+                        *error = Some(
+                            tr!(
+                                self.lang,
+                                "两次输入的密码不一致，请重试",
+                                "Passwords do not match, please try again"
+                            )
+                            .to_string(),
+                        );
+                        *step = 1;
+                        input.clear();
+                        new_pass.clear();
+                    }
+                }
+            },
+            _ => {}
+        }
+        self.popup = Some(crate::tui::app::Popup::PasswordChange {
+            step: *step,
+            old_pass: old_pass.clone(),
+            new_pass: new_pass.clone(),
+            input: input.clone(),
+            error: error.clone(),
+        });
         Ok(())
     }
 }
