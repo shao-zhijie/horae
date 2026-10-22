@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-10-22
+
+### Added
+
+- **密码安全模式（Password Protection）**：
+  - 新增基于 PBKDF2-HMAC-SHA256（50,000 次安全迭代与随机 16 字节盐）的数据加密保护机制。
+  - TUI 启动时自动锁屏，支持快捷键 `L` 随手锁定，设置视图 (`M` -> `p`) 与 `F7` 开关支持密码启用/修改/停用。
+  - CLI 全面适配密码鉴权，支持 `horae password [enable|disable|change|status]` 子命令，提供 `--password` 参数及 `HORAE_PASSWORD` 环境变量。
+- **快速录入沉浸无打扰模式（Distraction-Free Quick Capture）**：
+  - 在快速录入界面激活时（`Mode::Input`）彻底静默到期通知弹窗与音频提醒，确保用户录入思绪不被任何弹窗和声效打断。
+- **声学物理建模语义化音效与设置开关（Acoustic Sound System）**：
+  - 引入基于纯数学合成的声学打击乐音效算法（`sound.rs`），彻底取代机械单调蜂鸣，实现多声部温暖和弦与任务状态语义化回响。
+  - 设置中心及 SQLite 数据库新增 `sound_enabled` 配置项（默认开启），支持在设置视图使用 `b` 键实时开启/关闭全局提示音。
+
 ## [0.2.3] - 2026-10-20
 
 ### Added
