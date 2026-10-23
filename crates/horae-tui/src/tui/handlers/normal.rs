@@ -144,7 +144,7 @@ impl<'a> App<'a> {
                             ),
                         };
                     }
-                } else if is_omarchy && self.theme.id == crate::tui::theme::ThemeId::Retro82 {
+                } else if is_omarchy && self.theme.id.is_last() {
                     let saved = horae_core::repo::settings::set(self.conn, "theme", "auto");
                     self.omarchy_auto = true;
                     if let Some(t) = crate::tui::theme::detect_omarchy_theme() {

@@ -696,6 +696,14 @@ fn view_task_keys(c: &Ctx, lang: Lang) -> Vec<(&'static str, &'static str)> {
             picked.push(k);
         }
     }
+    // 设置视图：显示设置相关的快捷操作键 (b, p, n, s, r, d)。
+    if c.view == View::Settings {
+        for k in KEY_TABLE.iter().filter(|k| k.applies(c)) {
+            if ["b", "p", "n", "s", "r", "d"].contains(&k.keys) {
+                picked.push(k);
+            }
+        }
+    }
     // 捕获键 a：任何视图都可新建任务，常驻提示。
     if let Some(k) = KEY_TABLE
         .iter()

@@ -307,7 +307,7 @@ Only `DAILY`, `WEEKLY`, `MONTHLY` and `YEARLY` are supported, and every write pa
 | `horae profile <list\|new\|rename\|rm\|set-default>` | | manage data sets |
 | `horae completions <shell>` | | generate shell completions |
 
-Global flags apply everywhere: `--profile <name>` selects the data set, `--lang zh` (or `HORAE_LANG=zh`) prints help in Chinese, and `--theme <name>` (or `HORAE_THEME=<name>`) sets the UI theme (`catppuccin`, `latte`, `tokyo-night`, `gruvbox`, `retro-82`, or `auto`).
+Global flags apply everywhere: `--profile <name>` selects the data set, `--lang zh` (or `HORAE_LANG=zh`) prints help in Chinese, and `--theme <name>` (or `HORAE_THEME=<name>`) sets the UI theme (supports all 23 official Omarchy themes including `catppuccin`, `latte`, `tokyo-night`, `gruvbox`, `retro-82`, `nord`, `kanagawa`, `everforest`, `rose-pine`, `hackerman`, etc., or `auto` to follow system).
 
 ## TUI
 

@@ -95,7 +95,7 @@ impl<'a> App<'a> {
         let Some(ref popup) = self.popup else { return };
         match popup {
             crate::tui::app::Popup::ModuleToggles(idx) => {
-                let area = self.centered_rect(46, 21, size);
+                let area = self.centered_rect(46, 22, size);
                 f.render_widget(ratatui::widgets::Clear, area);
                 let block = Block::default()
                     .title(tr!(self.lang, " 模块显示设置 ", " Module Visibility "))
@@ -181,6 +181,10 @@ impl<'a> App<'a> {
                             "农历与节气提醒 (Lunar)",
                             "Lunar & holiday reminders (Lunar)"
                         ),
+                    ),
+                    (
+                        self.sound_enabled,
+                        tr!(self.lang, "提示音效 (Sound)", "Sound effects (Sound)"),
                     ),
                     (
                         self.password_enabled,

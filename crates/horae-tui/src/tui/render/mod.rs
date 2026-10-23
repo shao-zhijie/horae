@@ -985,6 +985,33 @@ impl<'a> AppRender for App<'a> {
 
             lines.push(Line::from(""));
             lines.push(Line::from(vec![Span::styled(
+                tr!(self.lang, "系统偏好设置", "System Preferences"),
+                Style::default()
+                    .fg(self.theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            )]));
+            lines.push(Line::from(vec![
+                Span::styled(
+                    tr!(self.lang, "• 提示音效: ", "• Sound Effects: "),
+                    Style::default().fg(self.theme.text_dim),
+                ),
+                if self.sound_enabled {
+                    Span::styled(
+                        tr!(self.lang, "已开启 (默认)", "Enabled (Default)"),
+                        Style::default()
+                            .fg(self.theme.text_success)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                } else {
+                    Span::styled(
+                        tr!(self.lang, "已关闭 (静音)", "Disabled (Muted)"),
+                        Style::default().fg(self.theme.text_dim),
+                    )
+                },
+            ]));
+
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![Span::styled(
                 tr!(self.lang, "数据安全保护", "Data Security"),
                 Style::default()
                     .fg(self.theme.accent)
@@ -1005,25 +1032,6 @@ impl<'a> AppRender for App<'a> {
                 } else {
                     Span::styled(
                         tr!(self.lang, "未启用 (默认)", "Disabled (Default)"),
-                        Style::default().fg(self.theme.text_dim),
-                    )
-                },
-            ]));
-            lines.push(Line::from(vec![
-                Span::styled(
-                    tr!(self.lang, "• 提示音效: ", "• Sound Effects: "),
-                    Style::default().fg(self.theme.text_dim),
-                ),
-                if self.sound_enabled {
-                    Span::styled(
-                        tr!(self.lang, "已开启 (默认)", "Enabled (Default)"),
-                        Style::default()
-                            .fg(self.theme.text_success)
-                            .add_modifier(Modifier::BOLD),
-                    )
-                } else {
-                    Span::styled(
-                        tr!(self.lang, "已关闭 (静音)", "Disabled (Muted)"),
                         Style::default().fg(self.theme.text_dim),
                     )
                 },

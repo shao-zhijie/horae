@@ -45,11 +45,11 @@ impl<'a> AppHandlers for App<'a> {
                             // close, implicitly handled because popup is taken and not put back
                         }
                         KeyCode::Char('j') | KeyCode::Down => {
-                            idx = (idx + 1) % 15;
+                            idx = (idx + 1) % 16;
                             self.popup = Some(crate::tui::app::Popup::ModuleToggles(idx));
                         }
                         KeyCode::Char('k') | KeyCode::Up => {
-                            idx = idx.checked_sub(1).unwrap_or(14);
+                            idx = idx.checked_sub(1).unwrap_or(15);
                             self.popup = Some(crate::tui::app::Popup::ModuleToggles(idx));
                         }
                         KeyCode::Char(' ') => {
@@ -181,6 +181,20 @@ impl<'a> AppHandlers for App<'a> {
                                     }
                                 }
                                 14 => {
+                                    // 提示音效：翻转并持久化到 settings 表。
+                                    self.sound_enabled = !self.sound_enabled;
+                                    let _ = horae_core::repo::settings::set(
+                                        self.conn,
+                                        "sound_enabled",
+                                        if self.sound_enabled { "1" } else { "0" },
+                                    );
+                                    if self.sound_enabled {
+                                        horae_core::sound::play(
+                                            horae_core::sound::SoundKind::TaskCompleted,
+                                        );
+                                    }
+                                }
+                                15 => {
                                     // 密码保护模式设置：未开启则打开设置弹窗，已开启则打开关闭/修改弹窗。
                                     if !self.password_enabled {
                                         self.popup = Some(crate::tui::app::Popup::PasswordSet {

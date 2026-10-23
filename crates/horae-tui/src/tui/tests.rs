@@ -2086,55 +2086,79 @@ fn lang_and_theme_toggle_persist_to_settings() {
 }
 
 #[test]
-fn omarchy_themes_all_five_presets_and_resolution() {
+fn omarchy_themes_all_twenty_three_presets_and_resolution() {
     use crate::tui::theme::{parse_hex_color, Theme, ThemeId};
     use horae_core::model::task::Status;
 
-    // 1. from_name 解析别名覆盖
-    assert_eq!(
-        Theme::from_name("mocha").unwrap().id,
-        ThemeId::CatppuccinMocha
-    );
-    assert_eq!(
-        Theme::from_name("catppuccin").unwrap().id,
-        ThemeId::CatppuccinMocha
-    );
-    assert_eq!(
-        Theme::from_name("catppuccin-mocha").unwrap().id,
-        ThemeId::CatppuccinMocha
-    );
+    assert_eq!(ThemeId::ALL.len(), 23);
 
-    assert_eq!(
-        Theme::from_name("latte").unwrap().id,
-        ThemeId::CatppuccinLatte
-    );
-    assert_eq!(
-        Theme::from_name("catppuccin-latte").unwrap().id,
-        ThemeId::CatppuccinLatte
-    );
-
-    assert_eq!(
-        Theme::from_name("tokyo-night").unwrap().id,
-        ThemeId::TokyoNight
-    );
-    assert_eq!(
-        Theme::from_name("tokyonight").unwrap().id,
-        ThemeId::TokyoNight
-    );
-    assert_eq!(
-        Theme::from_name("tokyo_night").unwrap().id,
-        ThemeId::TokyoNight
-    );
-
-    assert_eq!(Theme::from_name("gruvbox").unwrap().id, ThemeId::Gruvbox);
-
-    assert_eq!(Theme::from_name("retro-82").unwrap().id, ThemeId::Retro82);
-    assert_eq!(Theme::from_name("retro_82").unwrap().id, ThemeId::Retro82);
-    assert_eq!(Theme::from_name("retro82").unwrap().id, ThemeId::Retro82);
+    // 1. from_name 解析所有 23 款预设及常见别名
+    let cases = [
+        ("mocha", ThemeId::CatppuccinMocha),
+        ("catppuccin", ThemeId::CatppuccinMocha),
+        ("catppuccin-mocha", ThemeId::CatppuccinMocha),
+        ("latte", ThemeId::CatppuccinLatte),
+        ("catppuccin-latte", ThemeId::CatppuccinLatte),
+        ("tokyo-night", ThemeId::TokyoNight),
+        ("tokyonight", ThemeId::TokyoNight),
+        ("tokyo_night", ThemeId::TokyoNight),
+        ("gruvbox", ThemeId::Gruvbox),
+        ("retro-82", ThemeId::Retro82),
+        ("retro_82", ThemeId::Retro82),
+        ("retro82", ThemeId::Retro82),
+        ("ethereal", ThemeId::Ethereal),
+        ("everforest", ThemeId::Everforest),
+        ("flexoki-light", ThemeId::FlexokiLight),
+        ("flexoki", ThemeId::FlexokiLight),
+        ("hackerman", ThemeId::Hackerman),
+        ("kanagawa", ThemeId::Kanagawa),
+        ("last-horizon", ThemeId::LastHorizon),
+        ("lasthorizon", ThemeId::LastHorizon),
+        ("lumon", ThemeId::Lumon),
+        ("lupine", ThemeId::Lupine),
+        ("matte-black", ThemeId::MatteBlack),
+        ("matteblack", ThemeId::MatteBlack),
+        ("miasma", ThemeId::Miasma),
+        ("nord", ThemeId::Nord),
+        ("osaka-jade", ThemeId::OsakaJade),
+        ("osakajade", ThemeId::OsakaJade),
+        ("ristretto", ThemeId::Ristretto),
+        ("rose-pine", ThemeId::RosePine),
+        ("rosepine", ThemeId::RosePine),
+        ("solitude", ThemeId::Solitude),
+        ("starship", ThemeId::Starship),
+        ("vantablack", ThemeId::Vantablack),
+        ("white", ThemeId::White),
+    ];
+    for (name, expected_id) in cases {
+        assert_eq!(
+            Theme::from_name(name).unwrap().id,
+            expected_id,
+            "Failed resolving name: {name}"
+        );
+    }
 
     assert!(Theme::from_name("unknown-theme-xyz").is_none());
 
-    // 2. 检查 5 个主题的明暗属性与特定配色调性
+    // 2. 检查 5 个亮色主题和 18 个深色主题的明暗属性与特定配色调性
+    for id in ThemeId::ALL {
+        let t = Theme::from_id(*id);
+        assert_eq!(t.id, *id);
+        let expected_light = matches!(
+            id,
+            ThemeId::CatppuccinLatte
+                | ThemeId::FlexokiLight
+                | ThemeId::Lupine
+                | ThemeId::RosePine
+                | ThemeId::White
+        );
+        assert_eq!(
+            !t.is_dark, expected_light,
+            "Theme {:?} is_dark mismatch",
+            id
+        );
+    }
+
     let mocha = Theme::catppuccin_mocha();
     assert!(mocha.is_dark);
     assert_eq!(mocha.bg, ratatui::style::Color::Rgb(30, 30, 46));
@@ -2168,6 +2192,15 @@ fn omarchy_themes_all_five_presets_and_resolution() {
         Some(ratatui::style::Color::Rgb(248, 85, 37))
     );
 
+    let hacker = Theme::hackerman();
+    assert!(hacker.is_dark);
+    assert_eq!(hacker.bg, ratatui::style::Color::Rgb(11, 12, 22));
+    assert_eq!(hacker.accent, ratatui::style::Color::Rgb(130, 251, 156));
+
+    let nord = Theme::nord();
+    assert!(nord.is_dark);
+    assert_eq!(nord.bg, ratatui::style::Color::Rgb(46, 52, 64));
+
     // 3. parse_hex_color 工具函数
     assert_eq!(
         parse_hex_color("#7aa2f7"),
@@ -2181,7 +2214,7 @@ fn omarchy_themes_all_five_presets_and_resolution() {
 }
 
 #[test]
-fn f5_cycles_all_five_themes_and_persists() {
+fn f5_cycles_all_twenty_three_themes_and_persists() {
     horae_core::repo::state::set_test_override();
     let mut conn = Connection::open(":memory:").unwrap();
     migrate::run(&mut conn).unwrap();
@@ -2190,47 +2223,19 @@ fn f5_cycles_all_five_themes_and_persists() {
     app.popup = None;
     assert_eq!(app.theme.id, crate::tui::theme::ThemeId::CatppuccinMocha);
 
-    // 1. Mocha -> Latte
-    app.handle_key(kc(KeyCode::F(5))).unwrap();
-    assert_eq!(app.theme.id, crate::tui::theme::ThemeId::CatppuccinLatte);
-    assert_eq!(
-        horae_core::repo::settings::get(&conn, "theme")
-            .unwrap()
-            .as_deref(),
-        Some("latte")
-    );
+    // 依次通过 F5 循环遍历全部 23 款主题并验证持久化
+    for expected_next in crate::tui::theme::ThemeId::ALL.iter().skip(1) {
+        app.handle_key(kc(KeyCode::F(5))).unwrap();
+        assert_eq!(app.theme.id, *expected_next);
+        assert_eq!(
+            horae_core::repo::settings::get(&conn, "theme")
+                .unwrap()
+                .as_deref(),
+            Some(expected_next.key())
+        );
+    }
 
-    // 2. Latte -> Tokyo Night
-    app.handle_key(kc(KeyCode::F(5))).unwrap();
-    assert_eq!(app.theme.id, crate::tui::theme::ThemeId::TokyoNight);
-    assert_eq!(
-        horae_core::repo::settings::get(&conn, "theme")
-            .unwrap()
-            .as_deref(),
-        Some("tokyo-night")
-    );
-
-    // 3. Tokyo Night -> Gruvbox
-    app.handle_key(kc(KeyCode::F(5))).unwrap();
-    assert_eq!(app.theme.id, crate::tui::theme::ThemeId::Gruvbox);
-    assert_eq!(
-        horae_core::repo::settings::get(&conn, "theme")
-            .unwrap()
-            .as_deref(),
-        Some("gruvbox")
-    );
-
-    // 4. Gruvbox -> Retro 82
-    app.handle_key(kc(KeyCode::F(5))).unwrap();
-    assert_eq!(app.theme.id, crate::tui::theme::ThemeId::Retro82);
-    assert_eq!(
-        horae_core::repo::settings::get(&conn, "theme")
-            .unwrap()
-            .as_deref(),
-        Some("retro-82")
-    );
-
-    // 5. Retro 82 -> Mocha
+    // 最后一个主题 (White) 再按 F5，回环到首个主题 (CatppuccinMocha)
     app.handle_key(kc(KeyCode::F(5))).unwrap();
     assert_eq!(app.theme.id, crate::tui::theme::ThemeId::CatppuccinMocha);
     assert_eq!(
@@ -2240,13 +2245,13 @@ fn f5_cycles_all_five_themes_and_persists() {
         Some("mocha")
     );
 
-    // 重新从 DB 初始化验证恢复
+    // 重新从 DB 初始化验证恢复任意主题
     drop(app);
     let mut conn = Connection::open(":memory:").unwrap();
     migrate::run(&mut conn).unwrap();
-    horae_core::repo::settings::set(&conn, "theme", "retro-82").unwrap();
+    horae_core::repo::settings::set(&conn, "theme", "nord").unwrap();
     let app = app_normal(&conn);
-    assert_eq!(app.theme.id, crate::tui::theme::ThemeId::Retro82);
+    assert_eq!(app.theme.id, crate::tui::theme::ThemeId::Nord);
 }
 
 #[test]
@@ -2729,12 +2734,12 @@ fn module_toggle_popup_navigates_and_persists() {
     let reloaded = horae_core::repo::modules::ModuleVisibility::load(app.conn);
     assert!(!reloaded.splash);
 
-    // j 向下循环导航（0 → 1），k 反向且在 0 处回绕到 14（最后一项：密码保护模式）
+    // j 向下循环导航（0 → 1），k 反向且在 0 处回绕到 15（最后一项：密码保护模式）
     app.handle_key(key('j')).unwrap();
     assert_eq!(app.popup, Some(crate::tui::app::Popup::ModuleToggles(1)));
     app.popup = Some(crate::tui::app::Popup::ModuleToggles(0));
     app.handle_key(key('k')).unwrap();
-    assert_eq!(app.popup, Some(crate::tui::app::Popup::ModuleToggles(14)));
+    assert_eq!(app.popup, Some(crate::tui::app::Popup::ModuleToggles(15)));
 
     // Esc 关闭弹层
     app.handle_key(kc(KeyCode::Esc)).unwrap();
@@ -5335,9 +5340,9 @@ fn password_mode_toggle_via_f7_popup_persists() {
     assert!(!app.password_enabled, "默认密码保护模式关闭");
     assert!(!app.locked, "默认未锁定");
 
-    // 打开 F7 弹层并选择第 15 项（下标 14：密码保护模式）
+    // 打开 F7 弹层并选择第 16 项（下标 15：密码保护模式）
     app.handle_key(kc(KeyCode::F(7))).unwrap();
-    app.popup = Some(crate::tui::app::Popup::ModuleToggles(14));
+    app.popup = Some(crate::tui::app::Popup::ModuleToggles(15));
 
     // 按空格：打开设置密码弹窗
     app.handle_key(key(' ')).unwrap();
@@ -5403,7 +5408,7 @@ fn password_mode_toggle_via_f7_popup_persists() {
 
     // 再次打开 F7 并空格：应进入关闭保护弹窗
     app.handle_key(kc(KeyCode::F(7))).unwrap();
-    app.popup = Some(crate::tui::app::Popup::ModuleToggles(14));
+    app.popup = Some(crate::tui::app::Popup::ModuleToggles(15));
     app.handle_key(key(' ')).unwrap();
     assert!(matches!(
         app.popup,
@@ -5546,6 +5551,12 @@ fn test_settings_view_sound_toggle_defaults_on_and_persists() {
     // 2. 切到 Settings 视图
     app.set_view(View::Settings);
     assert_eq!(app.view, View::Settings);
+    let ctx = crate::tui::keys::ctx_of(&app);
+    let keys = crate::tui::keys::strip_keys(&ctx, horae_core::i18n::Lang::Zh);
+    assert!(
+        keys.iter().any(|(k, _)| *k == "b"),
+        "Settings 视图左侧引导栏应显示 b 开关音效提示"
+    );
 
     // 3. 在 Settings 视图中按 b 切换音效开关 -> 关闭
     app.handle_key(key('b')).unwrap();
@@ -5571,6 +5582,19 @@ fn test_settings_view_sound_toggle_defaults_on_and_persists() {
 
     // 5. 重新启动 App 应尊重 settings 中的持久化设置 (若写 0 则重启后依然关闭)
     horae_core::repo::settings::set(&conn, "sound_enabled", "0").unwrap();
-    let app2 = app_normal(&conn);
+    let mut app2 = app_normal(&conn);
     assert!(!app2.sound_enabled, "重启后应保持 settings 中的关闭状态");
+
+    // 6. 通过 F7 弹窗开关音效（下标 14：提示音效）
+    app2.handle_key(kc(KeyCode::F(7))).unwrap();
+    app2.popup = Some(crate::tui::app::Popup::ModuleToggles(14));
+    app2.handle_key(key(' ')).unwrap();
+    assert!(app2.sound_enabled, "在 F7 弹窗按空格应开启音效");
+    assert_eq!(
+        horae_core::repo::settings::get(&conn, "sound_enabled")
+            .unwrap()
+            .as_deref(),
+        Some("1"),
+        "F7 开启后 settings 表中应持久化为 1"
+    );
 }
