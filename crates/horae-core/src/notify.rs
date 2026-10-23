@@ -19,11 +19,14 @@ pub fn desktop(summary: &str, body: &str) {
 pub fn desktop_notify(summary: &str, body: &str, urgency: &str, icon: Option<&str>) {
     let summary = summary.to_string();
     let body = body.to_string();
+    #[cfg(all(unix, not(target_os = "macos")))]
     let urgency = match urgency {
         "low" => notify_rust::Urgency::Low,
         "critical" => notify_rust::Urgency::Critical,
         _ => notify_rust::Urgency::Normal,
     };
+    #[cfg(not(all(unix, not(target_os = "macos"))))]
+    let _ = urgency;
     let icon = icon.map(|s| s.to_string());
 
     std::thread::spawn(move || {
@@ -31,6 +34,7 @@ pub fn desktop_notify(summary: &str, body: &str, urgency: &str, icon: Option<&st
         n.appname("horae");
         n.summary(&summary);
         n.body(&body);
+        #[cfg(all(unix, not(target_os = "macos")))]
         n.urgency(urgency);
         if let Some(ref ic) = icon {
             n.icon(ic);

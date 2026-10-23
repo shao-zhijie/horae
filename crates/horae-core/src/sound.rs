@@ -434,11 +434,15 @@ fn is_legacy_v1_synth_wav(path: &Path) -> bool {
     if bytes.len() < 44 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
         return false;
     }
-    let max_sample = bytes[44..]
-        .chunks_exact(2)
-        .map(|c| i16::from_le_bytes([c[0], c[1]]).unsigned_abs())
-        .max()
-        .unwrap_or(0);
+    let mut max_sample = 0u16;
+    let mut i = 44;
+    while i + 1 < bytes.len() {
+        let sample = i16::from_le_bytes([bytes[i], bytes[i + 1]]).unsigned_abs();
+        if sample > max_sample {
+            max_sample = sample;
+        }
+        i += 2;
+    }
     (27990..=28005).contains(&max_sample)
 }
 
