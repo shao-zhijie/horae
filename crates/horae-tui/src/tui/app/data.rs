@@ -17,8 +17,8 @@ const STATUS_VIEWS: [View; 7] = [
     View::Done,
 ];
 
-/// 今日/明日列表元素：(任务, 展示用到期时间)。
-type DayList = Vec<(task::Task, i64)>;
+/// 今日/明日列表元素：(all 切片下标, 展示用到期时间)，避免在非今日/明日视图下重复深拷贝 Task。
+type DayIndexList = Vec<(usize, i64)>;
 
 impl<'a> App<'a> {
     pub(crate) fn total_count(&self) -> usize {
@@ -43,13 +43,13 @@ impl<'a> App<'a> {
     /// - 两个视图都只收**今天能动手的**状态（`Next` / `Scheduled`）：等待中、将来
     ///   也许、参考资料与未澄清的收件箱留在各自的状态视图里，逾期仍由每日摘要与
     ///   周回顾覆盖。
-    fn day_lists_from(&mut self, all: &[Task]) -> (DayList, DayList) {
+    fn day_lists_from(&mut self, all: &[Task]) -> (DayIndexList, DayIndexList) {
         let (t0s, t0e) = horae_core::time::local_day_bounds(0);
         let (t1s, t1e) = horae_core::time::local_day_bounds(1);
 
         let mut today = Vec::new();
         let mut tomorrow = Vec::new();
-        for t in all {
+        for (idx, t) in all.iter().enumerate() {
             if !matches!(t.status, task::Status::Next | task::Status::Scheduled) {
                 continue;
             }
@@ -80,10 +80,10 @@ impl<'a> App<'a> {
                 None => anchor.filter(|d| *d >= t1s && *d <= t1e),
             };
             if let Some(a) = d0 {
-                today.push((t.clone(), a));
+                today.push((idx, a));
             }
             if let Some(b) = d1 {
-                tomorrow.push((t.clone(), b));
+                tomorrow.push((idx, b));
             }
         }
         (today, tomorrow)
@@ -143,11 +143,13 @@ impl<'a> App<'a> {
         let (today, tomorrow) = self.day_lists_from(&all);
         self.counts.insert(View::Today, today.len());
         self.counts.insert(View::Tomorrow, tomorrow.len());
-        self.refresh_counts()?;
+        self.refresh_counts(date_search, &all)?;
 
         if self.lunar_enabled {
             let today_date = chrono::Local::now().naive_local().date();
-            self.calendar_info = horae_core::lunar::day_calendar_info(today_date);
+            if self.calendar_info.as_ref().map(|c| c.date) != Some(today_date) {
+                self.calendar_info = horae_core::lunar::day_calendar_info(today_date);
+            }
         } else {
             self.calendar_info = None;
         }
@@ -224,7 +226,9 @@ impl<'a> App<'a> {
                     tomorrow
                 };
                 ts.sort_by_key(|(_, due)| *due);
-                ts.into_iter().map(|(t, d)| (t, Some(d))).collect()
+                ts.into_iter()
+                    .map(|(idx, d)| (all[idx].clone(), Some(d)))
+                    .collect()
             }
             View::Archived => tasks::list_archived(self.conn)?
                 .into_iter()
@@ -275,11 +279,10 @@ impl<'a> App<'a> {
                     } else {
                         std::collections::HashSet::new()
                     };
-                    all.iter()
+                    all.into_iter()
                         .filter(|t| {
                             t.status == target && !(exclude_quotes && quote_ids.contains(&t.id))
                         })
-                        .cloned()
                         .map(|t| (t, None))
                         .collect()
                 } else {
@@ -290,15 +293,11 @@ impl<'a> App<'a> {
 
         // 单次查询取所有行的标签，避免逐行 `get_task_tags`。
         let ids: Vec<&str> = tasks.iter().map(|(t, _)| t.id.as_str()).collect();
-        let tag_map = tags::get_tags_for_tasks(self.conn, &ids)?;
+        let mut tag_map = tags::get_tags_for_tasks(self.conn, &ids)?;
         for (t, due) in tasks {
             let base_due = due.or_else(|| self.row_due(&t));
-            let mut row = row_from_tags_with_due(
-                &t,
-                0,
-                tag_map.get(&t.id).cloned().unwrap_or_default(),
-                base_due,
-            );
+            let row_tags = tag_map.remove(&t.id).unwrap_or_default();
+            let mut row = row_from_tags_with_due(&t, 0, row_tags, base_due);
             row.checked_in_today = checked_today.contains(&t.id);
             self.items.push(row);
         }
@@ -310,7 +309,7 @@ impl<'a> App<'a> {
     }
 
     /// 一次算好所有视图计数（除今日/明日已在 `refresh` 中赋值），渲染时零查询。
-    fn refresh_counts(&mut self) -> Result<()> {
+    fn refresh_counts(&mut self, date_search: Option<(i64, i64)>, all: &[Task]) -> Result<()> {
         self.counts.insert(View::Review, 0);
         self.counts
             .insert(View::Archived, tasks::count_archived(self.conn)?);
@@ -328,35 +327,16 @@ impl<'a> App<'a> {
                 )?,
             );
         }
-        let date_search = if self.search_query.len() == 4
-            && self.search_query.bytes().all(|b| b.is_ascii_digit())
-        {
-            Some(horae_core::time::parse_date_search(&self.search_query)?)
-        } else {
-            None
-        };
         let query = if self.search_query.is_empty() || date_search.is_some() {
             None
         } else {
             Some(self.search_query.as_str())
         };
-        let by_status = if let Some((start, end)) = date_search {
-            let mut date_tasks = tasks::list(
-                self.conn,
-                &ListFilter {
-                    status: None,
-                    tags: self.tag_filter.iter().cloned().collect(),
-                    query: None,
-                    review_stale: false,
-                },
-            )?;
-            date_tasks.retain(|t| {
-                horae_core::schedule::effective_due(t)
-                    .map(|due| due >= start && due <= end)
-                    .unwrap_or(false)
-            });
-            let mut counts = std::collections::HashMap::new();
-            for task in date_tasks {
+        // 当启用了 MMDD 日期搜索，或当前未设置 tag_filter 时，`all` 已包含所有符合搜索条件的未归档任务，
+        // 直接在内存中按状态统计即可，省去重复查库与重复展开 RRULE。
+        let by_status = if date_search.is_some() || self.tag_filter.is_none() {
+            let mut counts = std::collections::HashMap::with_capacity(STATUS_VIEWS.len());
+            for task in all {
                 *counts.entry(task.status.to_string()).or_insert(0) += 1;
             }
             counts
@@ -388,6 +368,9 @@ impl<'a> App<'a> {
 
     pub(crate) fn load_detail(&mut self) {
         self.detail = None;
+        if matches!(self.view, View::Tags | View::Settings | View::Workflow) {
+            return;
+        }
         if let Some(row) = self.items.get(self.selected) {
             if let Ok(task) = tasks::get(self.conn, &row.id) {
                 let tg = tags::get_task_tags(self.conn, &row.id).unwrap_or_default();

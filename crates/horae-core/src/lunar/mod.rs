@@ -212,28 +212,35 @@ impl CalendarDayInfo {
 /// 将公历日期转为农历日期
 pub fn lunar_from_date(date: NaiveDate) -> Option<LunarDate> {
     let base = NaiveDate::from_ymd_opt(LUNAR_START_YEAR, 1, 31)?;
-    let mut offset = (date - base).num_days();
-    if offset < 0 {
+    let total_offset = (date - base).num_days();
+    if total_offset < 0 {
         return None;
     }
 
-    let mut year = LUNAR_START_YEAR;
-    while year <= LUNAR_END_YEAR {
-        let idx = (year - LUNAR_START_YEAR) as usize;
-        let info = *LUNAR_INFO.get(idx)?;
-        let days_in_year = days_in_lunar_year(info);
-        if offset < days_in_year {
-            break;
+    // 预计算每年年初相对于 1900-01-31 的累计天数偏移表（202 个 i32，仅初始化一次），
+    // 用二分查找 O(log N) 直接定位农历年份，避免每次从 1900 年线性累加。
+    static YEAR_OFFSETS: std::sync::OnceLock<[i64; 202]> = std::sync::OnceLock::new();
+    let offsets = YEAR_OFFSETS.get_or_init(|| {
+        let mut arr = [0i64; 202];
+        let mut acc = 0i64;
+        for (i, &info) in LUNAR_INFO.iter().enumerate() {
+            arr[i] = acc;
+            acc += days_in_lunar_year(info);
         }
-        offset -= days_in_year;
-        year += 1;
-    }
+        arr[201] = acc;
+        arr
+    });
 
-    if year > LUNAR_END_YEAR {
+    if total_offset >= offsets[201] {
         return None;
     }
 
-    let idx = (year - LUNAR_START_YEAR) as usize;
+    let idx = offsets
+        .partition_point(|&off| off <= total_offset)
+        .saturating_sub(1);
+    let year = LUNAR_START_YEAR + idx as i32;
+    let mut offset = total_offset - offsets[idx];
+
     let info = LUNAR_INFO[idx];
     let leap_month = info & 0x0f;
     let mut month = 1u32;
@@ -286,47 +293,26 @@ pub fn lunar_from_date(date: NaiveDate) -> Option<LunarDate> {
 }
 
 fn days_in_lunar_year(info: u32) -> i64 {
-    let mut sum = 0;
-    // 12 个普通月
-    for m in 1..=12 {
-        if (info & (0x10000 >> m)) != 0 {
-            sum += 30;
-        } else {
-            sum += 29;
-        }
-    }
+    // 12 个普通月基础 29*12 = 348 天，加上大月天数（bit 4..=15 中 1 的个数）
+    let mut sum = 348 + ((info >> 4) & 0x0fff).count_ones() as i64;
     // 闰月
-    let leap_m = info & 0x0f;
-    if leap_m > 0 {
-        if (info & 0x10000) != 0 {
-            sum += 30;
-        } else {
-            sum += 29;
-        }
+    if (info & 0x0f) > 0 {
+        sum += if (info & 0x10000) != 0 { 30 } else { 29 };
     }
     sum
 }
 
+const GANZHI_60: [&str; 60] = [
+    "甲子", "乙丑", "丙寅", "丁卯", "戊辰", "己巳", "庚午", "辛未", "壬申", "癸酉", "甲戌", "乙亥",
+    "丙子", "丁丑", "戊寅", "己卯", "庚辰", "辛巳", "壬午", "癸未", "甲申", "乙酉", "丙戌", "丁亥",
+    "戊子", "己丑", "庚寅", "辛卯", "壬辰", "癸巳", "甲午", "乙未", "丙申", "丁酉", "戊戌", "己亥",
+    "庚子", "辛丑", "壬寅", "癸卯", "甲辰", "乙巳", "丙午", "丁未", "戊申", "己酉", "庚戌", "辛亥",
+    "壬子", "癸丑", "甲寅", "乙卯", "丙辰", "丁巳", "戊午", "己未", "庚申", "辛酉", "壬戌", "癸亥",
+];
+
 fn ganzhi_of_year(year: i32) -> &'static str {
-    let h_idx = ((year - 4).rem_euclid(10)) as usize;
-    let e_idx = ((year - 4).rem_euclid(12)) as usize;
-    static GANZHI_CACHE: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
-    let cache = GANZHI_CACHE.get_or_init(|| {
-        let mut v = Vec::new();
-        for h in GANZHI_HEAVEN {
-            for e in GANZHI_EARTH {
-                v.push(format!("{}{}", h, e));
-            }
-        }
-        v
-    });
-    // 查找对应干支组合
-    let target = format!("{}{}", GANZHI_HEAVEN[h_idx], GANZHI_EARTH[e_idx]);
-    cache
-        .iter()
-        .find(|s| *s == &target)
-        .map(|s| s.as_str())
-        .unwrap_or("丙午")
+    let idx = (year - 4).rem_euclid(60) as usize;
+    GANZHI_60[idx]
 }
 
 fn zodiac_of_year(year: i32) -> &'static str {
@@ -337,12 +323,19 @@ fn zodiac_of_year(year: i32) -> &'static str {
 /// 获取指定公历日期对应的节气（如果有）
 pub fn solar_term_of(date: NaiveDate) -> Option<SolarTerm> {
     let year = date.year();
-    for term in SolarTerm::ALL {
-        if let Some(d) = term.date_in_year(year) {
-            if d == date {
-                return Some(term);
-            }
-        }
+    if !(LUNAR_START_YEAR..=LUNAR_END_YEAR).contains(&year) {
+        return None;
+    }
+    let y_idx = (year - LUNAR_START_YEAR) as usize;
+    // 每个公历月固定只有两个节气：((month - 1) * 2) 与 ((month - 1) * 2 + 1)
+    let base_idx = ((date.month() - 1) * 2) as usize;
+    let day = date.day() as u8;
+    let row = &terms_table::SOLAR_TERMS_DAYS[y_idx];
+    if row[base_idx] == day {
+        return SolarTerm::from_index(base_idx);
+    }
+    if row[base_idx + 1] == day {
+        return SolarTerm::from_index(base_idx + 1);
     }
     None
 }
@@ -350,22 +343,22 @@ pub fn solar_term_of(date: NaiveDate) -> Option<SolarTerm> {
 /// 计算从 `from` 开始的下一个节气及剩余天数
 pub fn next_solar_term(from: NaiveDate) -> (SolarTerm, NaiveDate, i64) {
     let year = from.year();
-    // 遍历当前年及下一年所有的节气
-    let mut candidates = Vec::new();
-    for y in [year, year + 1] {
-        for term in SolarTerm::ALL {
-            if let Some(d) = term.date_in_year(y) {
-                if d >= from {
-                    candidates.push((term, d, (d - from).num_days()));
-                }
+    let start_term_idx = ((from.month() - 1) * 2) as usize;
+    for term in &SolarTerm::ALL[start_term_idx..] {
+        if let Some(d) = term.date_in_year(year) {
+            if d >= from {
+                return (*term, d, (d - from).num_days());
             }
         }
     }
-    candidates.sort_by_key(|(_, d, _)| *d);
-    candidates
-        .into_iter()
-        .next()
-        .unwrap_or((SolarTerm::Lichun, from, 0))
+    for term in SolarTerm::ALL {
+        if let Some(d) = term.date_in_year(year + 1) {
+            if d >= from {
+                return (term, d, (d - from).num_days());
+            }
+        }
+    }
+    (SolarTerm::Lichun, from, 0)
 }
 
 /// 判断指定日期是否为除夕（大年三十/廿九，即明天是农历正月初一）
@@ -384,8 +377,12 @@ pub fn holidays_of(date: NaiveDate) -> Vec<Holiday> {
     let lunar_opt = lunar_from_date(date);
     let term_opt = solar_term_of(date);
 
-    // 1. 除夕特判
-    if is_new_years_eve(date) {
+    // 1. 除夕特判：仅在农历腊月廿九或三十时才可能为除夕，避免全年每日多算一次明日农历
+    if lunar_opt
+        .as_ref()
+        .is_some_and(|l| l.month == 12 && l.day >= 29)
+        && is_new_years_eve(date)
+    {
         list.push(Holiday {
             name: "除夕".to_string(),
             is_major: true,
@@ -484,8 +481,18 @@ pub fn active_advance_warnings(date: NaiveDate) -> Vec<AdvanceWarning> {
     warnings
 }
 
-/// 获取当日完整的聚合日历与节气信息
+/// 获取当日完整的聚合日历与节气信息（按公历日期缓存最近一次结果，避免高频刷新时重复扫描全年）
 pub fn day_calendar_info(date: NaiveDate) -> Option<CalendarDayInfo> {
+    static CACHE: std::sync::Mutex<Option<(NaiveDate, CalendarDayInfo)>> =
+        std::sync::Mutex::new(None);
+    if let Ok(guard) = CACHE.lock() {
+        if let Some((cached_date, ref info)) = *guard {
+            if cached_date == date {
+                return Some(info.clone());
+            }
+        }
+    }
+
     let lunar = lunar_from_date(date)?;
     let solar_term = solar_term_of(date);
     let holidays = holidays_of(date);
@@ -493,7 +500,7 @@ pub fn day_calendar_info(date: NaiveDate) -> Option<CalendarDayInfo> {
     let next_major_holiday = next_major_holiday(date);
     let warnings = active_advance_warnings(date);
 
-    Some(CalendarDayInfo {
+    let info = CalendarDayInfo {
         date,
         lunar,
         solar_term,
@@ -501,7 +508,11 @@ pub fn day_calendar_info(date: NaiveDate) -> Option<CalendarDayInfo> {
         next_solar_term,
         next_major_holiday,
         warnings,
-    })
+    };
+    if let Ok(mut guard) = CACHE.lock() {
+        *guard = Some((date, info.clone()));
+    }
+    Some(info)
 }
 
 #[cfg(test)]

@@ -48,11 +48,18 @@ pub fn log_event(
     meta: Option<&str>,
     at: i64,
 ) -> anyhow::Result<()> {
-    conn.execute(
+    let mut stmt = conn.prepare_cached(
         "INSERT INTO task_events (task_id, event_type, from_status, to_status, at, meta)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        rusqlite::params![task_id, event_type, from_status, to_status, at, meta],
     )?;
+    stmt.execute(rusqlite::params![
+        task_id,
+        event_type,
+        from_status,
+        to_status,
+        at,
+        meta
+    ])?;
     Ok(())
 }
 

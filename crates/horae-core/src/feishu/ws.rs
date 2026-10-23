@@ -8,7 +8,6 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use prost::Message as ProstMessage;
 use rusqlite::Connection;
 use tungstenite::Message;
 

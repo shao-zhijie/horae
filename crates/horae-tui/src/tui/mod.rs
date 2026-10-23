@@ -179,19 +179,41 @@ fn run_app(
     app: &mut App,
     _profile: Option<&str>,
 ) -> Result<()> {
+    let mut dirty = true;
+    let mut last_draw = std::time::Instant::now();
+
     loop {
         if app.needs_clear {
             terminal.clear()?;
             app.needs_clear = false;
+            dirty = true;
         }
         if !app.locked {
             app.check_notifications();
             app.refresh_pomo();
             app.check_omarchy_theme_sync();
             app.check_voice_timeout();
+            if app.needs_clear
+                || app.pomo.phase != horae_core::model::pomodoro::Phase::Idle
+                || app.voice_recording.is_some()
+                || app.voice_transcribing
+                || app.toast.is_some()
+            {
+                dirty = true;
+            }
         }
-        terminal.draw(|f| app.render(f))?;
+        // 每 10 秒至少刷新一次，确保相对时间文案（如 "~1分钟后"）随时间自然演进
+        if dirty || last_draw.elapsed() >= Duration::from_secs(10) {
+            if app.needs_clear {
+                terminal.clear()?;
+                app.needs_clear = false;
+            }
+            terminal.draw(|f| app.render(f))?;
+            last_draw = std::time::Instant::now();
+            dirty = false;
+        }
         if event::poll(Duration::from_millis(100))? {
+            dirty = true;
             match event::read()? {
                 Event::Key(key) => {
                     if key.kind == KeyEventKind::Release {

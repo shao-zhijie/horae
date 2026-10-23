@@ -54,15 +54,11 @@ pub fn occurrences_since(rrule: &str, anchor_ms: i64, from_ms: i64) -> Result<Ve
 /// 规则是否用 `COUNT` 限定了总次数（这类规则不能前移展开基准）。
 fn has_count(rrule: &str) -> bool {
     rrule.split(';').any(|part| {
-        matches!(
-            part.split_once('=')
-                .unwrap_or((part, ""))
-                .0
-                .trim()
-                .to_uppercase()
-                .as_str(),
-            "COUNT"
-        )
+        part.split_once('=')
+            .unwrap_or((part, ""))
+            .0
+            .trim()
+            .eq_ignore_ascii_case("COUNT")
     })
 }
 
@@ -92,8 +88,9 @@ pub fn effective_due_from(occ: &[i64], now: i64) -> Option<i64> {
 pub fn effective_due(task: &Task) -> Option<i64> {
     if let Some(rr) = &task.rrule {
         if let Some(start) = anchor_ms(task) {
-            if let Ok(occ) = occurrences_since(rr, start, crate::time::now_ms()) {
-                if let Some(d) = effective_due_from(&occ, crate::time::now_ms()) {
+            let now = crate::time::now_ms();
+            if let Ok(occ) = occurrences_since(rr, start, now) {
+                if let Some(d) = effective_due_from(&occ, now) {
                     return Some(d);
                 }
             }
@@ -138,6 +135,14 @@ pub fn display_due(task: &Task, cached: Option<&[i64]>) -> Option<i64> {
     effective_due(task)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Freq {
+    Daily,
+    Weekly,
+    Monthly,
+    Yearly,
+}
+
 /// Minimal, self-contained RRULE expansion (no external crate).
 /// Supports FREQ=DAILY|WEEKLY|MONTHLY|YEARLY with INTERVAL, COUNT, UNTIL, and the
 /// BYDAY / BYMONTHDAY / BYMONTH qualifiers the shorthands emit.
@@ -149,7 +154,7 @@ fn rrule_occurrences(rrule: &str, anchor_ms: i64, limit: usize) -> Result<Vec<i6
         .single()
         .ok_or_else(|| anyhow!("invalid anchor timestamp"))?;
 
-    let mut freq = "DAILY".to_string();
+    let mut freq = Freq::Daily;
     let mut interval: i64 = 1;
     let mut count: i64 = limit as i64;
     let mut until_ms: Option<i64> = None;
@@ -162,63 +167,78 @@ fn rrule_occurrences(rrule: &str, anchor_ms: i64, limit: usize) -> Result<Vec<i6
             continue;
         }
         let (k, v) = part.split_once('=').unwrap_or((part, ""));
-        match k.to_uppercase().as_str() {
-            "FREQ" => freq = v.to_uppercase(),
-            "INTERVAL" => interval = v.parse().unwrap_or(1).max(1),
-            "COUNT" => count = v.parse().unwrap_or(limit as i64).max(1),
-            "UNTIL" => until_ms = Some(parse_until(v)?),
-            "BYDAY" => {
-                for d in v.split(',') {
-                    match d.trim().to_uppercase().as_str() {
-                        "MO" => byday.push(chrono::Weekday::Mon),
-                        "TU" => byday.push(chrono::Weekday::Tue),
-                        "WE" => byday.push(chrono::Weekday::Wed),
-                        "TH" => byday.push(chrono::Weekday::Thu),
-                        "FR" => byday.push(chrono::Weekday::Fri),
-                        "SA" => byday.push(chrono::Weekday::Sat),
-                        "SU" => byday.push(chrono::Weekday::Sun),
-                        _ => {}
+        let k = k.trim();
+        let v = v.trim();
+        if k.eq_ignore_ascii_case("FREQ") {
+            if v.eq_ignore_ascii_case("DAILY") {
+                freq = Freq::Daily;
+            } else if v.eq_ignore_ascii_case("WEEKLY") {
+                freq = Freq::Weekly;
+            } else if v.eq_ignore_ascii_case("MONTHLY") {
+                freq = Freq::Monthly;
+            } else if v.eq_ignore_ascii_case("YEARLY") {
+                freq = Freq::Yearly;
+            } else {
+                return Err(anyhow!("unsupported FREQ in RRULE: {}", v));
+            }
+        } else if k.eq_ignore_ascii_case("INTERVAL") {
+            interval = v.parse().unwrap_or(1).max(1);
+        } else if k.eq_ignore_ascii_case("COUNT") {
+            count = v.parse().unwrap_or(limit as i64).max(1);
+        } else if k.eq_ignore_ascii_case("UNTIL") {
+            until_ms = Some(parse_until(v)?);
+        } else if k.eq_ignore_ascii_case("BYDAY") {
+            for d in v.split(',') {
+                let d = d.trim();
+                if d.eq_ignore_ascii_case("MO") {
+                    byday.push(chrono::Weekday::Mon);
+                } else if d.eq_ignore_ascii_case("TU") {
+                    byday.push(chrono::Weekday::Tue);
+                } else if d.eq_ignore_ascii_case("WE") {
+                    byday.push(chrono::Weekday::Wed);
+                } else if d.eq_ignore_ascii_case("TH") {
+                    byday.push(chrono::Weekday::Thu);
+                } else if d.eq_ignore_ascii_case("FR") {
+                    byday.push(chrono::Weekday::Fri);
+                } else if d.eq_ignore_ascii_case("SA") {
+                    byday.push(chrono::Weekday::Sat);
+                } else if d.eq_ignore_ascii_case("SU") {
+                    byday.push(chrono::Weekday::Sun);
+                }
+            }
+        } else if k.eq_ignore_ascii_case("BYMONTHDAY") {
+            for d in v.split(',') {
+                if let Ok(n) = d.trim().parse::<i32>() {
+                    if n != 0 && n.abs() <= 31 && !bymonthday.contains(&n) {
+                        bymonthday.push(n);
                     }
                 }
             }
-            "BYMONTHDAY" => {
-                for d in v.split(',') {
-                    if let Ok(n) = d.trim().parse::<i32>() {
-                        if n != 0 && n.abs() <= 31 && !bymonthday.contains(&n) {
-                            bymonthday.push(n);
-                        }
+        } else if k.eq_ignore_ascii_case("BYMONTH") {
+            for m in v.split(',') {
+                if let Ok(n) = m.trim().parse::<i32>() {
+                    if (1..=12).contains(&n) && !bymonth.contains(&n) {
+                        bymonth.push(n);
                     }
                 }
             }
-            "BYMONTH" => {
-                for m in v.split(',') {
-                    if let Ok(n) = m.trim().parse::<i32>() {
-                        if (1..=12).contains(&n) && !bymonth.contains(&n) {
-                            bymonth.push(n);
-                        }
-                    }
-                }
-            }
-            _ => {}
         }
     }
 
     bymonth.sort_unstable();
 
-    let mut out = Vec::new();
-    let mut cur = anchor;
-
-    let mut actual_limit = limit;
-    if freq == "YEARLY" {
-        actual_limit = limit.min(5);
-    } else if freq == "MONTHLY" {
-        actual_limit = limit.min(24);
-    } else if freq == "WEEKLY" {
-        actual_limit = limit.min(104);
-    }
+    let actual_limit = match freq {
+        Freq::Yearly => limit.min(5),
+        Freq::Monthly => limit.min(24),
+        Freq::Weekly => limit.min(104),
+        Freq::Daily => limit,
+    };
     let max_iter = (count as usize).min(actual_limit);
 
-    if freq == "WEEKLY" && !byday.is_empty() {
+    let mut out = Vec::with_capacity(max_iter.min(64));
+    let mut cur = anchor;
+
+    if freq == Freq::Weekly && !byday.is_empty() {
         let mut occurrences_found = 0;
         let anchor_local = cur.with_timezone(&Local);
         let mut local_date = anchor_local.date_naive();
@@ -244,7 +264,7 @@ fn rrule_occurrences(rrule: &str, anchor_ms: i64, limit: usize) -> Result<Vec<i6
                 local_date += chrono::Duration::weeks(interval - 1);
             }
         }
-    } else if freq == "MONTHLY" && !bymonthday.is_empty() {
+    } else if freq == Freq::Monthly && !bymonthday.is_empty() {
         let mut occurrences_found = 0;
         let anchor_local = cur.with_timezone(&Local);
         let mut year = anchor_local.year();
@@ -281,7 +301,7 @@ fn rrule_occurrences(rrule: &str, anchor_ms: i64, limit: usize) -> Result<Vec<i6
             year = (total_months / 12) as i32;
             month = ((total_months % 12 + 12) % 12 + 1) as u32;
         }
-    } else if freq == "YEARLY" && !bymonth.is_empty() {
+    } else if freq == Freq::Yearly && !bymonth.is_empty() {
         let mut occurrences_found = 0;
         let anchor_local = cur.with_timezone(&Local);
         let anchor_day = anchor_local.day() as i32;
@@ -320,19 +340,18 @@ fn rrule_occurrences(rrule: &str, anchor_ms: i64, limit: usize) -> Result<Vec<i6
                 }
             }
             out.push(ms);
-            cur = step(cur, &freq, interval)?;
+            cur = step(cur, freq, interval)?;
         }
     }
     Ok(out)
 }
 
-fn step(dt: DateTime<Utc>, freq: &str, interval: i64) -> Result<DateTime<Utc>> {
+fn step(dt: DateTime<Utc>, freq: Freq, interval: i64) -> Result<DateTime<Utc>> {
     match freq {
-        "DAILY" => Ok(dt + Duration::days(interval)),
-        "WEEKLY" => Ok(dt + Duration::weeks(interval)),
-        "MONTHLY" => Ok(add_months(dt, interval)),
-        "YEARLY" => Ok(add_months(dt, 12 * interval)),
-        _ => Err(anyhow!("unsupported FREQ in RRULE: {}", freq)),
+        Freq::Daily => Ok(dt + Duration::days(interval)),
+        Freq::Weekly => Ok(dt + Duration::weeks(interval)),
+        Freq::Monthly => Ok(add_months(dt, interval)),
+        Freq::Yearly => Ok(add_months(dt, 12 * interval)),
     }
 }
 

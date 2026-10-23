@@ -113,9 +113,9 @@ pub fn check(conn: &Connection) -> Result<()> {
     );
     if lunar_enabled {
         let today_date = chrono::Local::now().date_naive();
-        if let Some(cal) = crate::lunar::day_calendar_info(today_date) {
-            // A. 重大节日提前提醒 (3天与1天)
-            for w in &cal.warnings {
+        if let Some(lunar) = crate::lunar::lunar_from_date(today_date) {
+            // A. 重大节日提前提醒 (3天与1天)：仅检查 +1d 与 +3d，无需扫描未来 366 天
+            for w in crate::lunar::active_advance_warnings(today_date) {
                 let warn_key = format!("lunar_warn_{}d:{}:{}", w.days_left, w.holiday_name, today);
                 if !state.sent.contains(&warn_key) {
                     desktop_notify(
@@ -130,12 +130,12 @@ pub fn check(conn: &Connection) -> Result<()> {
             }
 
             // B. 今日节气提醒
-            if let Some(term) = cal.solar_term {
+            if let Some(term) = crate::lunar::solar_term_of(today_date) {
                 let term_key = format!("lunar_term:{}:{}", term.name(), today);
                 if !state.sent.contains(&term_key) {
                     desktop_notify(
                         &format!("🌿 今日节气 · {}", term.name()),
-                        &format!("{} · 时令物候：{}", cal.lunar.short_format(), term.desc()),
+                        &format!("{} · 时令物候：{}", lunar.short_format(), term.desc()),
                         "low",
                         None,
                     );
@@ -145,7 +145,7 @@ pub fn check(conn: &Connection) -> Result<()> {
             }
 
             // C. 今日节日提醒
-            for h in &cal.holidays {
+            for h in crate::lunar::holidays_of(today_date) {
                 let fest_key = format!("lunar_fest:{}:{}", h.name, today);
                 if !state.sent.contains(&fest_key) {
                     let title = if h.is_major {
@@ -155,7 +155,7 @@ pub fn check(conn: &Connection) -> Result<()> {
                     };
                     desktop_notify(
                         &title,
-                        &format!("{} · {}", cal.lunar.short_format(), h.hint),
+                        &format!("{} · {}", lunar.short_format(), h.hint),
                         "normal",
                         None,
                     );

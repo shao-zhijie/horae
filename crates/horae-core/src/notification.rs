@@ -336,32 +336,16 @@ impl NotificationEngine {
 
         let mut events = Vec::new();
 
-        // 加载全部未归档任务，通过 effective_due() 计算有效截止时间。
-        // 正确支持带 rrule 的循环任务（每日站会、每周回顾等）。
-        let all = match tasks::list(
-            conn,
-            &tasks::ListFilter {
-                status: None,
-                tags: vec![],
-                query: None,
-                review_stale: false,
-            },
-        ) {
+        // 仅加载带时间信息的未归档、未完成任务候选集，通过 effective_due() 计算有效截止时间。
+        // 正确支持带 rrule 的循环任务（每日站会、每周回顾等），同时避免全表扫描无时间任务与全量标签查询。
+        let candidates = match tasks::list_timed_candidates(conn) {
             Ok(v) => v,
             Err(_) => return vec![],
         };
 
-        let ids: Vec<&str> = all.iter().map(|t| t.id.as_str()).collect();
-        let mut tag_map = crate::repo::tags::get_tags_for_tasks(conn, &ids).unwrap_or_default();
-
         let mut dirty = pruned;
 
-        for task in all {
-            // 已完成/已归档的任务不需要提醒
-            if task.status == crate::model::task::Status::Done || task.archived_at.is_some() {
-                continue;
-            }
-
+        for task in candidates {
             let Some(due) = crate::schedule::effective_due(&task) else {
                 continue;
             };
@@ -376,13 +360,20 @@ impl NotificationEngine {
                 continue;
             }
 
-            let tags = tag_map.remove(&task.id).unwrap_or_default();
             let kind = TaskTimingKind::from_task(&task);
+            let load_tags = |id: &str| -> Vec<String> {
+                crate::repo::tags::get_task_tags(conn, id)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|t| t.name)
+                    .collect()
+            };
 
             if diff_ms > 3_540_000 && diff_ms <= 3_600_000 {
                 let key = make_key("1h", &task.id, due);
                 if self.notified.insert(key) {
                     dirty = true;
+                    let tags = load_tags(&task.id);
                     events.push(NotificationEvent::InOneHour {
                         id: task.id,
                         title: task.title,
@@ -396,6 +387,7 @@ impl NotificationEngine {
                 let key = make_key("10m", &task.id, due);
                 if self.notified.insert(key) {
                     dirty = true;
+                    let tags = load_tags(&task.id);
                     events.push(NotificationEvent::InTenMins {
                         id: task.id,
                         title: task.title,
@@ -409,6 +401,7 @@ impl NotificationEngine {
                 let key = make_key("now", &task.id, due);
                 if self.notified.insert(key) {
                     dirty = true;
+                    let tags = load_tags(&task.id);
                     let is_overdue = diff_ms < -60_000;
                     events.push(NotificationEvent::Now {
                         id: task.id,

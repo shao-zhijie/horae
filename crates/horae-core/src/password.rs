@@ -91,14 +91,15 @@ pub fn change_password(conn: &Connection, old_pass: &str, new_pass: &str) -> Res
 
 /// PBKDF2-HMAC-SHA256 单块算法 (RFC 8018, dkLen = 32)。
 pub fn pbkdf2_sha256(password: &[u8], salt: &[u8], iterations: u32) -> [u8; 32] {
-    let mut mac = HmacSha256::new_from_slice(password).expect("HMAC accepts any key size");
+    let base_mac = HmacSha256::new_from_slice(password).expect("HMAC accepts any key size");
+    let mut mac = base_mac.clone();
     mac.update(salt);
     mac.update(&1u32.to_be_bytes());
     let mut u = mac.finalize().into_bytes();
     let mut result = u;
 
     for _ in 1..iterations {
-        let mut mac = HmacSha256::new_from_slice(password).expect("HMAC key");
+        let mut mac = base_mac.clone();
         mac.update(&u);
         u = mac.finalize().into_bytes();
         for (r, byte) in result.iter_mut().zip(u.iter()) {

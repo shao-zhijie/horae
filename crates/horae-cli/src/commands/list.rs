@@ -54,25 +54,20 @@ pub fn run(
     let ids: Vec<&str> = tasks_vec.iter().map(|t| t.id.as_str()).collect();
     let tag_map = tags::get_tags_for_tasks(conn, &ids)?;
 
-    let mut table = comfy_table::Table::new();
-    table
-        .load_preset(comfy_table::presets::NOTHING)
-        .set_content_arrangement(comfy_table::ContentArrangement::Dynamic)
-        .set_header(vec!["ID", "STATUS", "SCHEDULE", "TAGS", "TITLE"]);
-
+    let mut rows = Vec::with_capacity(tasks_vec.len());
     for t in &tasks_vec {
         let tags_s = tag_map.get(&t.id).map(|v| v.join(",")).unwrap_or_default();
         let short_id = &t.id[..t.id.len().min(8)];
         let due_s = time::format_local(effective_due(t));
-        table.add_row(vec![
-            short_id,
-            &t.status.to_string(),
-            &due_s,
-            &tags_s,
-            &t.title,
+        rows.push(vec![
+            short_id.to_string(),
+            t.status.to_string(),
+            due_s,
+            tags_s,
+            t.title.clone(),
         ]);
     }
 
-    println!("{table}");
+    super::print_table(Some(&["ID", "STATUS", "SCHEDULE", "TAGS", "TITLE"]), &rows);
     Ok(())
 }

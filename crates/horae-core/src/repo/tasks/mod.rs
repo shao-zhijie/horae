@@ -14,7 +14,7 @@ mod transition;
 pub use query::{
     checked_in_today, count_archived, count_by_status, count_completed_since, events, get,
     has_checked_in_today, list, list_archived, list_overdue_candidates, list_stale_inbox,
-    list_stale_waiting, resolve_id, ListFilter,
+    list_stale_waiting, list_timed_candidates, resolve_id, ListFilter,
 };
 pub use quotes::{count_quotes, count_quotes_in_status, list_quotes, quote_task_ids, QUOTE_TAG};
 pub use timeline::{describe_event, TimelineEntry};
@@ -41,6 +41,11 @@ pub(crate) fn row_to_task(r: &rusqlite::Row) -> rusqlite::Result<Task> {
     let status_str: String = r.get(3)?;
     let delegated_to: Option<String> = r.get(14)?;
     let cl_str: String = r.get(15)?;
+    let checklist = if cl_str.is_empty() || cl_str == "[]" {
+        Vec::new()
+    } else {
+        serde_json::from_str(&cl_str).unwrap_or_default()
+    };
 
     Ok(Task {
         id: r.get(0)?,
@@ -60,7 +65,7 @@ pub(crate) fn row_to_task(r: &rusqlite::Row) -> rusqlite::Result<Task> {
         archived_at: r.get(12)?,
         updated_at: r.get(13)?,
         delegated_to,
-        checklist: serde_json::from_str(&cl_str).unwrap_or_default(),
+        checklist,
         archive_reason: r.get(16)?,
     })
 }

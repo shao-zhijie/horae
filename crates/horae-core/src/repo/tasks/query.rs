@@ -10,7 +10,8 @@ use crate::repo::tasks::{row_to_task, TASK_COLUMNS};
 use anyhow::Result;
 
 pub fn get(conn: &Connection, id: &str) -> Result<Task> {
-    let mut stmt = conn.prepare(&format!("SELECT {} FROM tasks WHERE id = ?1", TASK_COLUMNS))?;
+    let mut stmt =
+        conn.prepare_cached(&format!("SELECT {} FROM tasks WHERE id = ?1", TASK_COLUMNS))?;
     let mut rows = stmt.query_map([id], row_to_task)?;
     rows.next()
         .transpose()?
@@ -22,7 +23,7 @@ pub fn get(conn: &Connection, id: &str) -> Result<Task> {
 /// else `TaskNotFound`.
 pub fn resolve_id(conn: &Connection, key: &str) -> Result<String> {
     // 一次查询同时命中精确匹配与 id 前缀（精确匹配排在最前），避免先 `get` 再前缀查询两次往返。
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT id FROM tasks WHERE id = ?1 OR id LIKE ?1 || '%' \
          ORDER BY (id = ?1) DESC LIMIT 2",
     )?;
@@ -40,8 +41,9 @@ pub fn resolve_id(conn: &Connection, key: &str) -> Result<String> {
 /// Fallback of `resolve_id`: a unique exact title among visible (non-archived)
 /// tasks resolves to its id. Archived tasks are only addressable by id.
 fn resolve_by_title(conn: &Connection, key: &str) -> Result<String> {
-    let mut stmt =
-        conn.prepare("SELECT id FROM tasks WHERE title = ?1 AND archived_at IS NULL ORDER BY id")?;
+    let mut stmt = conn.prepare_cached(
+        "SELECT id FROM tasks WHERE title = ?1 AND archived_at IS NULL ORDER BY id",
+    )?;
     let rows = stmt.query_map([key], |r| r.get::<usize, String>(0))?;
     let ids: Vec<String> = rows.collect::<rusqlite::Result<_>>()?;
     match ids.as_slice() {
@@ -53,12 +55,11 @@ fn resolve_by_title(conn: &Connection, key: &str) -> Result<String> {
 
 /// Count of archived (soft-deleted) tasks, for the guide sidebar badge.
 pub fn count_archived(conn: &Connection) -> Result<usize> {
-    let c: usize = conn.query_row(
+    let mut stmt = conn.prepare_cached(
         // 与 list_archived/filter_where 一致：排除系统内置任务。
         "SELECT COUNT(*) FROM tasks WHERE archived_at IS NOT NULL AND id != '__journal__'",
-        [],
-        |r| r.get(0),
     )?;
+    let c: usize = stmt.query_row([], |r| r.get(0))?;
     Ok(c)
 }
 
@@ -74,7 +75,7 @@ pub fn due_in_range(
     start_ms: i64,
     end_ms: i64,
 ) -> Result<Vec<(String, String, Option<i64>)>> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT id, title, due_at FROM tasks \
          WHERE archived_at IS NULL AND due_at BETWEEN ?1 AND ?2",
     )?;
@@ -86,7 +87,7 @@ pub fn due_in_range(
 
 /// List only archived (soft-deleted) tasks, for the restore UI.
 pub fn list_archived(conn: &Connection) -> Result<Vec<Task>> {
-    let mut stmt = conn.prepare(&format!(
+    let mut stmt = conn.prepare_cached(&format!(
         "SELECT {} FROM tasks WHERE archived_at IS NOT NULL AND id != '__journal__' \
          ORDER BY archived_at DESC",
         TASK_COLUMNS
@@ -109,7 +110,7 @@ pub fn list(conn: &Connection, f: &ListFilter) -> Result<Vec<Task>> {
          ORDER BY (scheduled_start_at IS NOT NULL) DESC, scheduled_start_at ASC, due_at ASC, created_at ASC",
         TASK_COLUMNS
     );
-    let mut stmt = conn.prepare(&sql)?;
+    let mut stmt = conn.prepare_cached(&sql)?;
     let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
     let rows = stmt.query_map(param_refs.as_slice(), row_to_task)?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -131,7 +132,7 @@ pub fn count_by_status(
     let sql = format!(
         "SELECT status, COUNT(*) FROM tasks WHERE archived_at IS NULL{where_sql} GROUP BY status"
     );
-    let mut stmt = conn.prepare(&sql)?;
+    let mut stmt = conn.prepare_cached(&sql)?;
     let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
     let rows = stmt.query_map(param_refs.as_slice(), |r| {
         Ok((r.get::<_, String>(0)?, r.get::<_, usize>(1)?))
@@ -175,7 +176,7 @@ fn filter_where(f: &ListFilter) -> (String, Vec<Box<dyn rusqlite::ToSql>>) {
 /// Inbox 中在 `before_ms` 之前收集、至今未澄清的任务 (id, title)，
 /// 用于心智维护的收件箱滞留提醒。按收集时间升序（最旧的在前）。
 pub fn list_stale_inbox(conn: &Connection, before_ms: i64) -> Result<Vec<(String, String)>> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT id, title FROM tasks \
          WHERE archived_at IS NULL AND status = 'inbox' AND created_at < ?1 \
          ORDER BY created_at ASC",
@@ -187,7 +188,7 @@ pub fn list_stale_inbox(conn: &Connection, before_ms: i64) -> Result<Vec<(String
 /// Waiting 中 `before_ms` 以来未再动过的任务 (id, title)，
 /// 用于心智维护的等待老化提醒。按最后变动时间升序。
 pub fn list_stale_waiting(conn: &Connection, before_ms: i64) -> Result<Vec<(String, String)>> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT id, title FROM tasks \
          WHERE archived_at IS NULL AND status = 'waiting' AND updated_at < ?1 \
          ORDER BY updated_at ASC",
@@ -198,18 +199,17 @@ pub fn list_stale_waiting(conn: &Connection, before_ms: i64) -> Result<Vec<(Stri
 
 /// 自 `since_ms` 以来完成的任务数（含随后归档的已完成任务）。
 pub fn count_completed_since(conn: &Connection, since_ms: i64) -> Result<usize> {
-    let c: usize = conn.query_row(
+    let mut stmt = conn.prepare_cached(
         "SELECT COUNT(*) FROM tasks WHERE completed_at IS NOT NULL AND completed_at >= ?1",
-        [since_ms],
-        |r| r.get(0),
     )?;
+    let c: usize = stmt.query_row([since_ms], |r| r.get(0))?;
     Ok(c)
 }
 
 /// 今日已打卡的循环任务 id：存在 `habit_completed` 事件且时间 >= `since_ms`。
 /// 循环任务完成时不会置 `completed_at`（重新排程而非结束），故只能靠事件判断。
 pub fn checked_in_today(conn: &Connection, since_ms: i64) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT DISTINCT task_id FROM task_events \
          WHERE event_type = ?1 AND at >= ?2",
     )?;
@@ -234,6 +234,19 @@ pub fn has_checked_in_today(conn: &Connection, task_id: &str, since_ms: i64) -> 
     Ok(rows.next()?.is_some())
 }
 
+/// 查询带时间信息（截止/排程/循环规则）的未完成、未归档任务候选集，
+/// 供后台通知引擎使用，避免在每个 tick 加载无排程任务与已完成任务。
+pub fn list_timed_candidates(conn: &Connection) -> Result<Vec<Task>> {
+    let mut stmt = conn.prepare_cached(&format!(
+        "SELECT {} FROM tasks \
+         WHERE archived_at IS NULL AND status != 'done' AND id != '__journal__' \
+           AND (due_at IS NOT NULL OR scheduled_start_at IS NOT NULL OR rrule IS NOT NULL)",
+        TASK_COLUMNS
+    ))?;
+    let rows = stmt.query_map([], row_to_task)?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
 /// 查询可能逾期的候选任务：未归档、非已完成，且满足以下任一条件：
 ///
 /// 1. `due_at < now`
@@ -242,7 +255,7 @@ pub fn has_checked_in_today(conn: &Connection, task_id: &str, since_ms: i64) -> 
 ///
 /// 利用 `idx_tasks_overdue` 索引快速过滤绝大部分未到期任务。
 pub fn list_overdue_candidates(conn: &Connection, now: i64) -> Result<Vec<Task>> {
-    let mut stmt = conn.prepare(&format!(
+    let mut stmt = conn.prepare_cached(&format!(
         "SELECT {} FROM tasks \
          WHERE archived_at IS NULL AND status != 'done' AND id != '__journal__' \
            AND (due_at < ?1 OR scheduled_start_at < ?1 OR rrule IS NOT NULL)",
@@ -253,7 +266,7 @@ pub fn list_overdue_candidates(conn: &Connection, now: i64) -> Result<Vec<Task>>
 }
 
 pub fn events(conn: &Connection, task_id: &str) -> Result<Vec<event::TaskEvent>> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT id,task_id,event_type,from_status,to_status,at,meta \
          FROM task_events WHERE task_id = ?1 ORDER BY at ASC",
     )?;

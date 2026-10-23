@@ -22,11 +22,7 @@ fn list(config: &Config) -> anyhow::Result<()> {
         println!("(no profiles)");
         return Ok(());
     }
-    let mut table = comfy_table::Table::new();
-    table
-        .load_preset(comfy_table::presets::NOTHING)
-        .set_content_arrangement(comfy_table::ContentArrangement::Dynamic);
-
+    let mut rows = Vec::with_capacity(names.len());
     for name in names {
         let profile = config.profile(&name).expect("listed name must exist");
         let default = if config.default_profile == name {
@@ -40,9 +36,9 @@ fn list(config: &Config) -> anyhow::Result<()> {
             .map(|c| format!("cloud={}", c.url))
             .unwrap_or_default();
         let db_str = format!("db={}", profile.db);
-        table.add_row(vec![&name, &db_str, &cloud, default]);
+        rows.push(vec![name, db_str, cloud, default.to_string()]);
     }
-    println!("{table}");
+    super::print_table(None, &rows);
     Ok(())
 }
 

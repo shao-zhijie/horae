@@ -102,6 +102,7 @@ pub(crate) fn build_list_items(app: &App) -> Vec<ListItem<'static>> {
     } else {
         None
     };
+    let (today_start, today_end) = horae_core::time::local_day_bounds(0);
 
     app.items
         .iter()
@@ -173,10 +174,7 @@ pub(crate) fn build_list_items(app: &App) -> Vec<ListItem<'static>> {
                 && !is_checked_in
                 && !is_quote
                 && r.due
-                    .map(|d| {
-                        let (s, e) = horae_core::time::local_day_bounds(0);
-                        d >= s && d <= e
-                    })
+                    .map(|d| d >= today_start && d <= today_end)
                     .unwrap_or(false);
 
             let due_color = if is_archived || is_done || is_checked_in || is_quote {

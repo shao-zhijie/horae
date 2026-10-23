@@ -8,12 +8,13 @@ use anyhow::Result;
 
 /// Count of all tags, for the guide sidebar badge.
 pub fn count_tags(conn: &Connection) -> Result<usize> {
-    let c: usize = conn.query_row("SELECT COUNT(*) FROM tags", [], |r| r.get(0))?;
+    let mut stmt = conn.prepare_cached("SELECT COUNT(*) FROM tags")?;
+    let c: usize = stmt.query_row([], |r| r.get(0))?;
     Ok(c)
 }
 
 pub fn list_tags(conn: &Connection) -> Result<Vec<Tag>> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT id, name, category, is_system, color, icon, description, created_at \
          FROM tags ORDER BY category, name",
     )?;
@@ -27,7 +28,7 @@ pub fn list_tags(conn: &Connection) -> Result<Vec<Tag>> {
 
 /// Query tags ordered by usage frequency (count in task_tags) descending, then by name.
 pub fn list_tags_by_frequency(conn: &Connection) -> Result<Vec<Tag>> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT t.id, t.name, t.category, t.is_system, t.color, t.icon, t.description, t.created_at \
          FROM tags t \
          LEFT JOIN task_tags tt ON t.id = tt.tag_id \
@@ -43,7 +44,7 @@ pub fn list_tags_by_frequency(conn: &Connection) -> Result<Vec<Tag>> {
 }
 
 pub fn get_tag_by_name(conn: &Connection, name: &str) -> Result<Option<Tag>> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT id, name, category, is_system, color, icon, description, created_at \
          FROM tags WHERE name = ?1",
     )?;
@@ -184,7 +185,7 @@ pub fn delete_tag(conn: &Connection, tag_name: &str) -> Result<()> {
 }
 
 pub fn get_task_tags(conn: &Connection, task_id: &str) -> Result<Vec<Tag>> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT t.id, t.name, t.category, t.is_system, t.color, t.icon, t.description, t.created_at \
          FROM tags t JOIN task_tags tt ON tt.tag_id = t.id WHERE tt.task_id = ?1 \
          ORDER BY t.category, t.name",
@@ -204,7 +205,11 @@ pub fn get_tags_for_tasks(
     conn: &Connection,
     ids: &[&str],
 ) -> Result<std::collections::HashMap<String, Vec<String>>> {
-    let mut out: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    if ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let mut out: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::with_capacity(ids.len());
     const BATCH: usize = 500;
     for chunk in ids.chunks(BATCH) {
         let placeholders = vec!["?"; chunk.len()].join(",");

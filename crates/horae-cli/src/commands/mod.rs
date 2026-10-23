@@ -1,7 +1,59 @@
 use rusqlite::Connection;
+use unicode_width::UnicodeWidthStr;
 
 use crate::cli::Command;
 use anyhow::Result;
+
+/// Lightweight CJK-aware aligned table printer (replaces `comfy-table`).
+pub(crate) fn print_table(headers: Option<&[&str]>, rows: &[Vec<String>]) {
+    let cols = headers
+        .map(|h| h.len())
+        .or_else(|| rows.first().map(|r| r.len()))
+        .unwrap_or(0);
+    if cols == 0 {
+        return;
+    }
+    let mut widths = vec![0usize; cols];
+    if let Some(h) = headers {
+        for (i, cell) in h.iter().enumerate() {
+            widths[i] = widths[i].max(UnicodeWidthStr::width(*cell));
+        }
+    }
+    for row in rows {
+        for (i, cell) in row.iter().enumerate().take(cols) {
+            widths[i] = widths[i].max(UnicodeWidthStr::width(cell.as_str()));
+        }
+    }
+
+    let print_row = |cells: &[&str]| {
+        let mut line = String::new();
+        // Keep a single leading space to match comfy-table NOTHING preset layout
+        line.push(' ');
+        for (i, cell) in cells.iter().enumerate() {
+            if i > 0 {
+                line.push_str("  ");
+            }
+            line.push_str(cell);
+            if i + 1 < cols {
+                let w = UnicodeWidthStr::width(*cell);
+                for _ in 0..widths[i].saturating_sub(w) {
+                    line.push(' ');
+                }
+            }
+        }
+        println!("{}", line.trim_end());
+    };
+
+    if let Some(h) = headers {
+        print_row(h);
+    }
+    let mut refs: Vec<&str> = Vec::with_capacity(cols);
+    for row in rows {
+        refs.clear();
+        refs.extend(row.iter().map(String::as_str));
+        print_row(&refs);
+    }
+}
 
 mod alarm;
 mod backup;
