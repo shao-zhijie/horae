@@ -299,6 +299,7 @@ fn do_capture(conn: &Connection, line: &str) -> Result<()> {
             status: None,
             notes: None,
             json: false,
+            natural: false,
         },
     )
 }

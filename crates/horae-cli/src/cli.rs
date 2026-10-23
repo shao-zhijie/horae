@@ -69,6 +69,12 @@ pub enum Command {
     Capture {
         #[arg(num_args = 0.., help = "Task title (quotes optional)")]
         title: Vec<String>,
+        #[arg(
+            short = 'N',
+            long = "natural",
+            help = "Parse input as natural language (e.g. from voice dictation)"
+        )]
+        natural: bool,
         #[arg(long = "clip", help = "Capture content from system clipboard")]
         clip: bool,
         #[arg(long = "tag", value_name = "TAG", help = "Tag to apply (repeatable)")]
@@ -98,6 +104,22 @@ pub enum Command {
             help = "Notes / description for the task"
         )]
         notes: Option<String>,
+        #[arg(long, help = "Print the created task as JSON")]
+        json: bool,
+    },
+    /// Capture a task from voice transcription or natural language (alias for capture --natural)
+    #[command(
+        long_about = "Capture a task from voice transcription or natural language dictation. \
+        Automatically extracts recurrence, schedule/due times, priorities, tags, and cleans verbal fillers.",
+        after_help = "Examples:\n  horae voice \"明天下午三点半去参加架构评审会，非常重要，标签是工作\"\n  echo \"提醒我每周一早上九点开例会\" | horae voice",
+        visible_alias = "v"
+    )]
+    Voice {
+        #[arg(
+            num_args = 0..,
+            help = "Voice dictation text or natural language (reads from stdin if omitted or '-')"
+        )]
+        text: Vec<String>,
         #[arg(long, help = "Print the created task as JSON")]
         json: bool,
     },
@@ -572,6 +594,7 @@ mod tests {
         match cli.command.unwrap() {
             Command::Capture {
                 title,
+                natural,
                 clip,
                 tag,
                 high,
@@ -583,6 +606,7 @@ mod tests {
                 json,
             } => {
                 assert_eq!(title.join(" "), "buy milk");
+                assert!(!natural);
                 assert!(!clip);
                 assert_eq!(tag, vec!["home".to_string()]);
                 assert!(!high && medium && !low);

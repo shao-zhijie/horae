@@ -11,6 +11,8 @@ pub(crate) mod completion;
 mod data;
 mod ops;
 mod profiles;
+pub(crate) mod voice;
+pub(crate) use voice::VoiceRecording;
 
 pub(crate) fn visual_len(s: &str) -> usize {
     s.chars()
@@ -344,6 +346,13 @@ pub(crate) struct App<'a> {
     pub(crate) zen_capture: bool,
     /// 闪念录入即退出（settings 键 `flash_mode`，默认关闭）。
     pub(crate) flash_mode: bool,
+    /// 语音录入后台句柄与状态。
+    pub(crate) voice_recording: Option<VoiceRecording>,
+    /// 是否正在调用 voxtype 转写中。
+    pub(crate) voice_transcribing: bool,
+    /// 后台 voxtype 转写结果接收通道。
+    pub(crate) voice_transcribe_rx:
+        Option<std::sync::mpsc::Receiver<std::io::Result<std::process::Output>>>,
     /// 农历与节气提醒开关（settings 键 `lunar_reminder`，默认开启）。
     pub(crate) lunar_enabled: bool,
     /// 今日聚合历法与节气信息。
@@ -511,6 +520,9 @@ impl<'a> App<'a> {
             completion_style,
             zen_capture,
             flash_mode,
+            voice_recording: None,
+            voice_transcribing: false,
+            voice_transcribe_rx: None,
             lunar_enabled,
             calendar_info: None,
             password_enabled,

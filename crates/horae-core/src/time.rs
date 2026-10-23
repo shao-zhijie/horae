@@ -286,7 +286,7 @@ pub fn parse_time(s: &str) -> Result<i64> {
         return local_to_utc_ms(base.date_naive().and_time(t));
     }
 
-    // 中文天词：今天/明天/后天（可带 HH:MM）
+    // 中文天词：今天/明天/后天/大后天（可带 HH:MM）
     if let Some(stripped) = s.strip_prefix("今天") {
         let t = parse_optional_time(stripped.trim(), default_time)?;
         return local_to_utc_ms(now.date_naive().and_time(t));
@@ -299,6 +299,11 @@ pub fn parse_time(s: &str) -> Result<i64> {
     if let Some(stripped) = s.strip_prefix("后天") {
         let t = parse_optional_time(stripped.trim(), default_time)?;
         let day = now.date_naive() + Duration::days(2);
+        return local_to_utc_ms(day.and_time(t));
+    }
+    if let Some(stripped) = s.strip_prefix("大后天") {
+        let t = parse_optional_time(stripped.trim(), default_time)?;
+        let day = now.date_naive() + Duration::days(3);
         return local_to_utc_ms(day.and_time(t));
     }
 

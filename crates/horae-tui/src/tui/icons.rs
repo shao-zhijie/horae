@@ -46,6 +46,8 @@ pub enum Icon {
     Achievement,
     /// 时间线（类 Git 提交图谱）
     Timeline,
+    /// 语音录入麦克风标记
+    Voice,
 }
 
 impl IconStyle {
@@ -207,6 +209,7 @@ pub fn glyph(kind: Icon, style: IconStyle) -> &'static str {
             Tomato => "\u{f2f2}",
             Achievement => "\u{f05e0}",
             Timeline => "\u{f418}",
+            Voice => "\u{f130}",
         },
         IconStyle::Ascii => match kind {
             Inbox => "I",
@@ -229,6 +232,7 @@ pub fn glyph(kind: Icon, style: IconStyle) -> &'static str {
             Tomato => "o",
             Achievement => "!",
             Timeline => "~",
+            Voice => "V",
         },
     }
 }
@@ -259,6 +263,7 @@ mod tests {
             Icon::Tomato,
             Icon::Achievement,
             Icon::Timeline,
+            Icon::Voice,
         ];
         for k in kinds {
             let g = glyph(k, IconStyle::Ascii);

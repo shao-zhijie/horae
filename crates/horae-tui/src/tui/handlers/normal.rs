@@ -342,6 +342,18 @@ impl<'a> App<'a> {
     /// 进入各类输入/编辑模式的按键。
     pub(super) fn handle_mode_switch_keys(&mut self, key: KeyEvent) -> Result<bool> {
         match key.code {
+            KeyCode::Char('v') if key.modifiers.contains(KeyModifiers::ALT) => {
+                self.set_mode(Mode::Capturing);
+                self.input.clear();
+                self.start_voice_recording()?;
+                return Ok(true);
+            }
+            KeyCode::F(8) => {
+                self.set_mode(Mode::Capturing);
+                self.input.clear();
+                self.start_voice_recording()?;
+                return Ok(true);
+            }
             KeyCode::Char('v') | KeyCode::Char('V') => {
                 if self.mode == Mode::Visual {
                     self.set_mode(Mode::Normal);

@@ -51,6 +51,7 @@ fn run_inner(
     match cmd {
         Command::Capture {
             title,
+            natural,
             clip,
             tag,
             high,
@@ -73,6 +74,16 @@ fn run_inner(
                 status,
                 notes,
                 json,
+                natural,
+            },
+        ),
+        Command::Voice { text, json } => capture::run(
+            conn,
+            capture::CaptureArgs {
+                title: text.join(" "),
+                natural: true,
+                json,
+                ..Default::default()
             },
         ),
         Command::List {

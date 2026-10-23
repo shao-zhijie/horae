@@ -1215,6 +1215,7 @@ dependencies = [
  "chrono",
  "crossterm 0.29.0",
  "horae-core",
+ "libc",
  "ratatui",
  "rusqlite",
  "tempfile",

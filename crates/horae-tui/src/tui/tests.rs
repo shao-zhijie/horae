@@ -5598,3 +5598,69 @@ fn test_settings_view_sound_toggle_defaults_on_and_persists() {
         "F7 开启后 settings 表中应持久化为 1"
     );
 }
+
+#[test]
+fn test_voice_capture_cancel_and_flow() {
+    horae_core::repo::state::set_test_override();
+    let mut conn = Connection::open(":memory:").unwrap();
+    migrate::run(&mut conn).unwrap();
+    let mut app = app_normal(&conn);
+
+    // 1. Enter capture mode
+    app.handle_key(key('a')).unwrap();
+    assert_eq!(app.mode, Mode::Capturing);
+
+    // 2. Simulate active recording
+    let dummy_child = std::process::Command::new("sleep")
+        .arg("5")
+        .spawn()
+        .unwrap();
+    let wav_path =
+        std::env::temp_dir().join(format!("test_horae_voice_{}.wav", std::process::id()));
+    std::fs::write(&wav_path, b"test").unwrap();
+    app.voice_recording = Some(crate::tui::app::voice::VoiceRecording {
+        child: dummy_child,
+        wav_path: wav_path.clone(),
+        started_at: std::time::Instant::now(),
+        cleanup_wav: true,
+    });
+    assert!(app.is_voice_recording());
+
+    // 2b. Stray character keys during recording should be ignored
+    app.handle_key(key('x')).unwrap();
+    assert_eq!(app.input, "");
+
+    // 3. Esc during recording cancels recording, stays in Capturing mode, and Drop removes wav
+    app.handle_key(kc(KeyCode::Esc)).unwrap();
+    assert!(!app.is_voice_recording());
+    assert_eq!(app.mode, Mode::Capturing);
+    assert!(!wav_path.exists());
+
+    // 4. Simulate async transcription completion via channel
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.voice_transcribing = true;
+    app.voice_transcribe_rx = Some(rx);
+    // Enter while transcribing is ignored (does not submit early)
+    app.handle_key(kc(KeyCode::Enter)).unwrap();
+    assert_eq!(app.mode, Mode::Capturing);
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        tx.send(Ok(std::process::Output {
+            status: std::process::ExitStatus::from_raw(0),
+            stdout: "提醒我明天下午三点二十去参加评审会，非常重要"
+                .as_bytes()
+                .to_vec(),
+            stderr: Vec::new(),
+        }))
+        .unwrap();
+        app.check_voice_timeout();
+        assert!(!app.voice_transcribing);
+        assert_eq!(app.input, "去参加评审会 ~明天 15:20 !high @work");
+    }
+
+    // 5. Esc exits Capturing mode back to Normal
+    app.handle_key(kc(KeyCode::Esc)).unwrap();
+    assert_eq!(app.mode, Mode::Normal);
+}

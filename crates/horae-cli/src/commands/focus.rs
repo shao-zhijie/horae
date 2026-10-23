@@ -154,6 +154,7 @@ mod tests {
                 status: None,
                 notes: None,
                 json: false,
+                natural: false,
             },
         )
         .unwrap();
@@ -171,6 +172,7 @@ mod tests {
                 status: Some("next".into()),
                 notes: None,
                 json: false,
+                natural: false,
             },
         )
         .unwrap();
@@ -196,6 +198,7 @@ mod tests {
                 status: None,
                 notes: None,
                 json: false,
+                natural: false,
             },
         )
         .unwrap();
@@ -214,6 +217,7 @@ mod tests {
                 status: None,
                 notes: None,
                 json: false,
+                natural: false,
             },
         )
         .unwrap();

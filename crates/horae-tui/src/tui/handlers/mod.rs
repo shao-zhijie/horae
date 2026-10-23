@@ -394,6 +394,37 @@ impl<'a> AppHandlers for App<'a> {
             }
         }
 
+        // 语音录入/转写期间的独占按键处理 (Alt+V / F8 / Enter / Esc / Ctrl+G)
+        if self.mode == Mode::Capturing && (self.is_voice_recording() || self.voice_transcribing) {
+            match key.code {
+                KeyCode::Esc => {
+                    self.cancel_voice_recording();
+                }
+                KeyCode::Char('g') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.cancel_voice_recording();
+                }
+                KeyCode::Enter | KeyCode::F(8) if self.is_voice_recording() => {
+                    self.finish_voice_recording()?;
+                }
+                KeyCode::Char('v')
+                    if key.modifiers.contains(KeyModifiers::ALT) && self.is_voice_recording() =>
+                {
+                    self.finish_voice_recording()?;
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+
+        // 启动语音录入快捷键 (Alt+V / F8，避免抢占 Ctrl+V 粘贴)
+        if self.mode == Mode::Capturing
+            && ((key.code == KeyCode::Char('v') && key.modifiers.contains(KeyModifiers::ALT))
+                || key.code == KeyCode::F(8))
+        {
+            self.start_voice_recording()?;
+            return Ok(());
+        }
+
         match key.code {
             KeyCode::Esc => {
                 self.organizing_id = None;

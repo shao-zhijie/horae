@@ -1,3 +1,6 @@
+pub mod natural;
+pub use natural::{parse_natural_language, NaturalTask};
+
 pub struct QuickAdd {
     pub title: String,
     pub tags: Vec<String>,

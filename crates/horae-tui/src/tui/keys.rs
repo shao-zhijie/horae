@@ -747,6 +747,9 @@ fn mode_keys(mode: Mode, lang: Lang) -> Vec<(&'static str, &'static str)> {
             v.push(("Enter", lang.tr("保存", "save")));
             v.push(("Esc", lang.tr("取消", "cancel")));
             v.push(("Tab", lang.tr("补全", "complete")));
+            if mode == Capturing {
+                v.push(("Alt+V", lang.tr("语音", "voice")));
+            }
         }
         Search => {
             v.push(("Enter", lang.tr("搜索", "search")));

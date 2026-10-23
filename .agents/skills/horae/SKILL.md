@@ -94,6 +94,7 @@ horae log "喝点水"                        # 记纯日志，不创建任务
 | --- | --- | --- |
 | `horae` | — | 启动 TUI |
 | `horae capture "标题 [@tag ~time *rrule !p]"` | `c` | 捕获入收件箱 |
+| `horae voice "自然口语/语音文本" [--json]` | `v` | 语音/自然语言智能捕获（自动抽取时间/周期/标签/优先级） |
 | `horae list [--status S] [--tag T] [--due-before TIME] [--json]` | `l` | 列出任务 |
 | `horae show <id>` | `s` | 详情 + 时间线 |
 | `horae next\|wait\|someday\|done <id>` | `d`=done | 状态流转 |

@@ -17,6 +17,7 @@ pub fn ensure_rrule_supported(rrule: &str) -> Result<()> {
 
 /// CLI-derived arguments for `capture`. Keeps `run`'s signature small and
 /// separates command parsing from the repo-layer `tasks::CaptureInput`.
+#[derive(Debug, Clone, Default)]
 pub struct CaptureArgs {
     pub title: String,
     pub clip: bool,
@@ -28,6 +29,7 @@ pub struct CaptureArgs {
     pub status: Option<String>,
     pub notes: Option<String>,
     pub json: bool,
+    pub natural: bool,
 }
 
 fn get_clipboard_text() -> Result<String> {
@@ -82,6 +84,18 @@ fn get_clipboard_text() -> Result<String> {
 pub fn run(conn: &Connection, mut args: CaptureArgs) -> Result<()> {
     let mut notes_text = args.notes.clone();
 
+    // 语音/自然语言模式：若 title 为空或为 "-"，支持从标准输入 (stdin) 读取管道文本
+    if args.natural && (args.title.trim().is_empty() || args.title.trim() == "-") {
+        use std::io::IsTerminal;
+        if !std::io::stdin().is_terminal() {
+            use std::io::Read;
+            let mut stdin_buf = String::new();
+            if std::io::stdin().read_to_string(&mut stdin_buf).is_ok() {
+                args.title = stdin_buf.trim().to_string();
+            }
+        }
+    }
+
     if args.clip {
         let clip_text = get_clipboard_text()?;
         let trimmed_clip = clip_text.trim();
@@ -116,7 +130,15 @@ pub fn run(conn: &Connection, mut args: CaptureArgs) -> Result<()> {
         anyhow::bail!("task title cannot be empty (provide a title or use --clip)");
     }
 
-    let quick_add = horae_core::parser::parse_quick_add(&args.title);
+    let quick_add = if args.natural {
+        let nat = horae_core::parser::natural::parse_natural_language(&args.title);
+        if args.due.is_none() && nat.due_str.is_some() {
+            args.due = nat.due_str.clone();
+        }
+        nat.to_quick_add()
+    } else {
+        horae_core::parser::parse_quick_add(&args.title)
+    };
 
     // 与 TUI 输入层同源防呆：非法 RRULE（引擎不支持的频率/语法）在写库前报错，
     // 避免循环任务静默退化成一次性任务（watch 手机桥复用本函数，一并覆盖）。
@@ -169,9 +191,12 @@ pub fn run(conn: &Connection, mut args: CaptureArgs) -> Result<()> {
         },
         ..Default::default()
     };
-    let t = tasks::create_capture(conn, &input)?;
+    let mut t = tasks::create_capture(conn, &input)?;
     if let Some(start) = scheduled_start {
         let _ = tasks::schedule(conn, &t.id, start, None, quick_add.rrule)?;
+        if let Ok(updated) = tasks::get(conn, &t.id) {
+            t = updated;
+        }
     }
 
     if args.json {
@@ -183,6 +208,24 @@ pub fn run(conn: &Connection, mut args: CaptureArgs) -> Result<()> {
             t.title,
             t.status
         );
+        if args.natural {
+            let mut details = Vec::new();
+            if let Some(s) = t.scheduled_start_at {
+                details.push(format!("scheduled: {}", time::format_local(Some(s))));
+            }
+            if let Some(d) = t.due_at {
+                details.push(format!("due: {}", time::format_local(Some(d))));
+            }
+            if let Some(ref rr) = t.rrule {
+                details.push(format!("rrule: {rr}"));
+            }
+            if let Some(ref p) = t.priority {
+                details.push(format!("priority: {p}"));
+            }
+            if !details.is_empty() {
+                println!("  parsed -> {}", details.join(" | "));
+            }
+        }
     }
     Ok(())
 }
@@ -208,6 +251,7 @@ mod tests {
                 status: None,
                 notes: None,
                 json: false,
+                natural: false,
             },
         )
         .unwrap();
@@ -243,6 +287,7 @@ mod tests {
                 status: None,
                 notes: None,
                 json: false,
+                natural: false,
             },
         )
         .unwrap();
@@ -300,6 +345,7 @@ mod tests {
                 status: None,
                 notes: None,
                 json: false,
+                natural: false,
             },
         )
         .unwrap();
@@ -334,6 +380,7 @@ mod tests {
                 status: None,
                 notes: None,
                 json: false,
+                natural: false,
             },
         )
         .unwrap_err();
@@ -358,6 +405,7 @@ mod tests {
                 status: None,
                 notes: None,
                 json: false,
+                natural: false,
             },
         )
         .unwrap_err();
@@ -381,9 +429,72 @@ mod tests {
                 status: None,
                 notes: None,
                 json: false,
+                natural: false,
             },
         )
         .unwrap_err();
         assert!(err.to_string().contains("cannot be empty"), "{}", err);
+    }
+
+    #[test]
+    fn capture_natural_voice_input() {
+        let (_dir, conn) = test_conn();
+        run(
+            &conn,
+            CaptureArgs {
+                title: "提醒我明天下午三点半去参加架构评审会，非常重要，标签是工作".into(),
+                natural: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let tasks = tasks::list(
+            &conn,
+            &tasks::ListFilter {
+                status: None,
+                tags: vec![],
+                query: None,
+                review_stale: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(tasks.len(), 1);
+        let t = &tasks[0];
+        assert_eq!(t.title, "去参加架构评审会");
+        assert_eq!(t.priority.as_deref(), Some("high"));
+        assert_eq!(t.status, task::Status::Scheduled);
+        let tags = horae_core::repo::tags::get_task_tags(&conn, &t.id).unwrap();
+        assert!(tags.iter().any(|tag| tag.name == "work"));
+    }
+
+    #[test]
+    fn capture_natural_deadline_sets_due_without_scheduled_start() {
+        let (_dir, conn) = test_conn();
+        run(
+            &conn,
+            CaptureArgs {
+                title: "下周五下班前必须提交财报分析".into(),
+                natural: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let tasks = tasks::list(
+            &conn,
+            &tasks::ListFilter {
+                status: None,
+                tags: vec![],
+                query: None,
+                review_stale: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(tasks.len(), 1);
+        let t = &tasks[0];
+        assert_eq!(t.title, "提交财报分析");
+        assert!(t.due_at.is_some());
+        assert_eq!(t.scheduled_start_at, None);
+        assert_eq!(t.status, task::Status::Inbox);
+        assert_eq!(t.priority.as_deref(), Some("high"));
     }
 }

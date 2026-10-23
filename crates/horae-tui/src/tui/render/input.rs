@@ -1,4 +1,6 @@
+use crate::tui::app::voice::VOICE_MAX_SECS;
 use crate::tui::app::{App, Mode, View};
+use crate::tui::icons::Icon;
 use horae_core::parser::{parse_quick_add, priority_value, tokenize_quick_add, QuickAddKind};
 use horae_core::time;
 use ratatui::symbols::border;
@@ -46,6 +48,7 @@ impl<'a> App<'a> {
 
     /// 输入/编辑模式的弹层：标题 + 文本行（快速录入带实时解析预览）。
     pub(super) fn render_input_overlay(&mut self, f: &mut Frame, size: Rect) {
+        let title_recording_holder;
         let title = match self.mode {
             Mode::Search => {
                 tr!(
@@ -55,7 +58,30 @@ impl<'a> App<'a> {
                 )
             }
             Mode::Capturing => {
-                if self.organizing_id.is_some() {
+                let voice_icon = self.icon(Icon::Voice);
+                let wait_icon = self.icon(Icon::Waiting);
+                if let Some(ref rec) = self.voice_recording {
+                    let secs = rec.started_at.elapsed().as_secs();
+                    title_recording_holder = tr!(
+                        self.lang,
+                        " {} 正在录音... [{:02}:{:02}/{:02}:{:02}] (请说话 · Alt+V/Enter 结束) ",
+                        " {} Recording... [{:02}:{:02}/{:02}:{:02}] (Speak now · Alt+V/Enter to finish) ",
+                        voice_icon,
+                        secs / 60,
+                        secs % 60,
+                        VOICE_MAX_SECS / 60,
+                        VOICE_MAX_SECS % 60
+                    );
+                    title_recording_holder.as_str()
+                } else if self.voice_transcribing {
+                    title_recording_holder = tr!(
+                        self.lang,
+                        " {} 正在识别与解析语义... (Esc 取消) ",
+                        " {} Recognizing & parsing speech... (Esc to cancel) ",
+                        wait_icon
+                    );
+                    title_recording_holder.as_str()
+                } else if self.organizing_id.is_some() {
                     tr!(
                         self.lang,
                         " 组织: 编辑 标题 @标签 ~时间 *周期 (空/Esc 跳过) ",
@@ -64,13 +90,21 @@ impl<'a> App<'a> {
                 } else if self.view == View::Quotes && self.quotes.enabled {
                     tr!(self.lang, " 快速录入金句 ", " Quick Capture Quote ")
                 } else if self.flash_mode {
-                    tr!(
+                    title_recording_holder = tr!(
                         self.lang,
-                        " 快速录入 (闪念 · 回车退出) ",
-                        " Quick Capture (Flash · Enter to exit) "
-                    )
+                        " 快速录入 (闪念 · 回车退出 · {} Alt+V/F8 语音) ",
+                        " Quick Capture (Flash · Enter to exit · {} Alt+V/F8 Voice) ",
+                        voice_icon
+                    );
+                    title_recording_holder.as_str()
                 } else {
-                    tr!(self.lang, " 快速录入 ", " Quick Capture ")
+                    title_recording_holder = tr!(
+                        self.lang,
+                        " 快速录入 ({} Alt+V/F8 语音) ",
+                        " Quick Capture ({} Alt+V/F8 Voice) ",
+                        voice_icon
+                    );
+                    title_recording_holder.as_str()
                 }
             }
             Mode::Tagging => tr!(
@@ -130,7 +164,39 @@ impl<'a> App<'a> {
         let mut text_lines: Vec<Line> = Vec::new();
 
         // 输入行（首行）：快速录入带语法高亮，其余为纯文本行。行首固定一个空格。
-        let mut input_line_display = if self.mode == Mode::Capturing {
+        let mut input_line_display = if self.voice_recording.is_some() {
+            let voice_icon = self.icon(Icon::Voice);
+            Line::from(vec![
+                Span::raw(" "),
+                Span::styled(
+                    tr!(
+                        self.lang,
+                        "{} 正在聆听，请对着麦克风说话...",
+                        "{} Listening, please speak into microphone...",
+                        voice_icon
+                    ),
+                    Style::default()
+                        .fg(self.theme.text_dim)
+                        .add_modifier(Modifier::ITALIC),
+                ),
+            ])
+        } else if self.voice_transcribing {
+            let wait_icon = self.icon(Icon::Waiting);
+            Line::from(vec![
+                Span::raw(" "),
+                Span::styled(
+                    tr!(
+                        self.lang,
+                        "{} 正在识别并结构化解析语音...",
+                        "{} Transcribing & parsing speech...",
+                        wait_icon
+                    ),
+                    Style::default()
+                        .fg(self.theme.text_warn)
+                        .add_modifier(Modifier::ITALIC),
+                ),
+            ])
+        } else if self.mode == Mode::Capturing {
             self.capture_input_line()
         } else {
             Line::from(format!(" {}", self.input))
@@ -146,6 +212,8 @@ impl<'a> App<'a> {
                 }
             }
         } else if self.mode == Mode::Capturing
+            && self.voice_recording.is_none()
+            && !self.voice_transcribing
             && self.input_cursor == self.input.len()
             && (self.input.is_empty() || self.input.ends_with(' '))
         {
@@ -199,7 +267,13 @@ impl<'a> App<'a> {
         let scroll_x = cursor_col.saturating_sub(inner_width) as u16;
 
         f.render_widget(ratatui::widgets::Clear, area);
-        let block_style = self.theme.accent;
+        let block_style = if self.voice_recording.is_some() {
+            self.theme.text_urgent
+        } else if self.voice_transcribing {
+            self.theme.text_warn
+        } else {
+            self.theme.accent
+        };
         let block = Block::default()
             .title(title)
             .borders(Borders::ALL)
