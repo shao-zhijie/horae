@@ -74,19 +74,37 @@ pub fn run(conn: &Connection, action: Option<&str>, name: Option<&str>) -> Resul
             }
         }
         "test" => {
-            let kind = name
-                .and_then(SoundKind::from_str_name)
-                .unwrap_or(SoundKind::FocusStart);
-            println!(
-                "{}",
-                tr!(
-                    lang,
-                    "▶ 正在测试播放音效: {}",
-                    "▶ Testing sound playback: {}",
-                    kind.name()
-                )
-            );
-            sound::play(kind);
+            if matches!(
+                name.map(|s| s.trim().to_ascii_lowercase()).as_deref(),
+                Some("all")
+            ) {
+                for kind in SoundKind::ALL {
+                    println!(
+                        "{}",
+                        tr!(
+                            lang,
+                            "▶ 正在测试播放音效: {}",
+                            "▶ Testing sound playback: {}",
+                            kind.name()
+                        )
+                    );
+                    let _ = sound::play_blocking(kind);
+                }
+            } else {
+                let kind = name
+                    .and_then(SoundKind::from_str_name)
+                    .unwrap_or(SoundKind::FocusStart);
+                println!(
+                    "{}",
+                    tr!(
+                        lang,
+                        "▶ 正在测试播放音效: {}",
+                        "▶ Testing sound playback: {}",
+                        kind.name()
+                    )
+                );
+                let _ = sound::play_blocking(kind);
+            }
         }
         other => {
             anyhow::bail!("unknown sound action: {}", other);

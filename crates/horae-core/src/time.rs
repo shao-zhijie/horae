@@ -327,7 +327,12 @@ pub fn parse_time(s: &str) -> Result<i64> {
         return local_to_utc_ms(day.and_time(t));
     }
 
-    // English today/tomorrow
+    // English today/tomorrow/day after tomorrow
+    if let Some(stripped) = s.strip_prefix("day after tomorrow") {
+        let time = parse_optional_time(stripped.trim(), default_time)?;
+        let day = now.date_naive() + Duration::days(2);
+        return local_to_utc_ms(day.and_time(time));
+    }
     if let Some(stripped) = s.strip_prefix("today") {
         let time = parse_optional_time(stripped.trim(), default_time)?;
         return local_to_utc_ms(now.date_naive().and_time(time));
@@ -600,6 +605,30 @@ mod tests {
         );
         assert!(parse_time("mon 09:30").is_ok());
         assert!(parse_time("next sun 18:00").is_ok());
+    }
+
+    #[test]
+    fn parse_english_day_words() {
+        let today = Local::now().date_naive();
+        assert_eq!(
+            parse_time("today").unwrap(),
+            local_ms(today, default_time())
+        );
+        assert_eq!(
+            parse_time("tomorrow").unwrap(),
+            local_ms(today + Duration::days(1), default_time())
+        );
+        assert_eq!(
+            parse_time("day after tomorrow").unwrap(),
+            local_ms(today + Duration::days(2), default_time())
+        );
+        assert_eq!(
+            parse_time("day after tomorrow 14:00").unwrap(),
+            local_ms(
+                today + Duration::days(2),
+                NaiveTime::from_hms_opt(14, 0, 0).unwrap()
+            )
+        );
     }
 
     #[test]

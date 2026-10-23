@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-10-24
+
+### Added
+
+- **英文自然语言/语音捕获全面支持（English Natural Language & Voice Capture）**：
+  - 核心解析器 (`natural.rs`) 完整支持英文口语输入，实现自然语言到 GTD 任务的零门槛转录。
+  - 严格词界保护 (`find_word_boundary`)，避免 ASCII 关键字在复合英文词中造成误触发。
+  - 支持 0~99 英文数字与 1st~31st 序数词、英文优先级关键词识别（`urgent`, `critical`, `asap`, `p1/p2/p3` 等）。
+  - 支持英文标签显式提取与五大多场景语义智能推断（`work`, `errands`, `calls`, `learning`, `home`）。
+  - 支持丰富多样的英文循环规则（`every day`, `every weekday`, `every N days`, `every Monday`, `every month on the 1st` 等）。
+  - 支持英文相对时间（`in 30 minutes`, `in 2 weeks`）、日历时刻（`tomorrow at 3pm`, `by Friday at 6pm`, `noon`, `midnight`）与口语噪音清洗。
+  - 时间解析引擎新增 `"day after tomorrow"`（后天）支持。
+
+### Fixed
+
+- **修复中文口语时钟后缀误判**：
+  - 修复语音记录如 `"每天早晨九点钟吃饭"` 时误将口语后缀 `"钟"` 留在标题并解析为 `"钟吃饭"` 的 bug，同时对 `"钟楼"`、`"钟表"` 等真实名词设置复合词防吞保护。
+
 ## [0.2.4] - 2026-10-22
 
 ### Added
