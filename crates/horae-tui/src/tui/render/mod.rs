@@ -64,7 +64,7 @@ impl<'a> AppRender for App<'a> {
             f.render_widget(bg_block, size);
 
             // 屏幕最底部单行 Zen 快捷键指示
-            let hint_line = Line::from(vec![
+            let hint_spans = vec![
                 Span::styled(
                     " [Enter] ",
                     Style::default()
@@ -109,7 +109,28 @@ impl<'a> AppRender for App<'a> {
                     tr!(self.lang, "退出", "exit"),
                     Style::default().fg(self.theme.text_dim),
                 ),
-            ]);
+            ];
+
+            // 纯净专注模式不画横幅，但状态提示必须看得见 —— 例如录音前发现
+            // 默认麦克风被静音，没有提示就等于静默失败，用户只会看到"什么都没发生"。
+            let now_ms = horae_core::time::now_ms();
+            let active_toast = self.toast.as_ref().filter(|t| {
+                now_ms - t.created_at_ms < t.duration_ms && t.message == self.status_message
+            });
+            let hint_line = match active_toast {
+                Some(t) => Line::from(vec![Span::styled(
+                    format!(" {}", t.message),
+                    Style::default()
+                        .fg(if t.is_success {
+                            self.theme.text_success
+                        } else {
+                            self.theme.accent
+                        })
+                        .bg(self.theme.status_bg)
+                        .add_modifier(Modifier::BOLD),
+                )]),
+                None => Line::from(hint_spans),
+            };
             let hint_area = Rect {
                 x: 0,
                 y: size.height.saturating_sub(1),
